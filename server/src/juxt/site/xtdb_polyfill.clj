@@ -50,8 +50,6 @@
 ;; who are generated per request and not saved
 (defn with-tx [db tx] db)
 
-(defn entity-history [db id & args])
-
 (defn entity-tx [db id])
 
 (defn sync [node])
