@@ -46,6 +46,8 @@
 
 (defn db-basis [db] (:basis db))
 
+;; used for http basic auth subjects
+;; who are generated per request and not saved
 (defn with-tx [db tx] db)
 
 (defn entity-history [db id & args])
