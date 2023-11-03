@@ -250,7 +250,7 @@
 
       (remove
        nil?
-       [[:xtdb.api/put subject
+       [[:put :site subject
          (get-in subject [:juxt.site/id-token-claims "iat"])
          ;; Expire the subject in the bitemporal timeline according to the 'exp'
          ;; (expiry) in the claims. This has the added desirable effect of
@@ -258,7 +258,7 @@
          (get-in subject [:juxt.site/id-token-claims "exp"])]
 
         ;; Update session with subject
-        [:xtdb.api/put
+        [:put :site
          (cond-> session
            subject (assoc :juxt.site/subject (:xt/id subject))
            (:juxt.site/return-to session) (dissoc :juxt.site/return-to))]
@@ -266,11 +266,11 @@
         ;; Escalate session (as recommended by OWASP as this session
         ;; has been promoted, see
         ;; https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#renew-the-session-id-after-any-privilege-level-change)
-        [:xtdb.api/put new-session-token-doc]
+        [:put :site new-session-token-doc]
 
         ;; Delete the old session token
         (when session-token-id
-          [:xtdb.api/delete session-token-id])
+          [:delete :site session-token-id])
 
         [:ring.response/status (if (:juxt.site/return-to session) 303 200)]
 

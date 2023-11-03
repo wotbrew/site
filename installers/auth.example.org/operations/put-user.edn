@@ -117,7 +117,7 @@
      (fn [doc]
        ;; TODO: If xt/id already exists, then an if-matches header
        ;; must be provided.
-       [:xtdb.api/put doc])
+       [:put :site doc])
      *prepare*)}
 
    :juxt.site/scope

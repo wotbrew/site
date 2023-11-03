@@ -52,7 +52,7 @@
           jwks-uri (get-in issuer-doc [:juxt.site/openid-configuration "jwks_uri"])]
       (cond-> []
         (= jwks-uri (:jwks-uri *prepare*))
-        (conj [:xtdb.api/put (assoc issuer-doc :juxt.site/jwks (:juxt.site/jwks *prepare*))])))}
+        (conj [:put :site (assoc issuer-doc :juxt.site/jwks (:juxt.site/jwks *prepare*))])))}
 
    :juxt.site/rules
    [

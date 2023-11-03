@@ -41,7 +41,7 @@
     (let [{:keys [new-document]} *prepare*
           id (:xt/id new-document)]
       (if-not (xt/entity id)
-        [[:xtdb.api/put new-document]]
+        [[:put :site new-document]]
         (throw (ex-info "Resource already exists" {:uri id}))))}
 
    :juxt.site/rules

@@ -824,6 +824,12 @@
     scope :juxt.site/scope
     prepare :juxt.site/prepare}]
   (let [db (xt/db xt-ctx)
+        ;; TODO XTDB2
+        ;; in xtdb2 there is no equivalent call
+        ;; used to determine the id of log events, :xtdb.api/tx-id also included in the event doc, the tx itself is merged into the event.
+        ;; - we could drop the event
+        ;; - find another way to give it an id and drop the tx fields
+        ;; - change xtdb2 to add similar functionality
         tx (xt/indexing-tx xt-ctx)
         _ (assert operation-uri)
         operation (xt/entity db operation-uri)

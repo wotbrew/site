@@ -34,7 +34,7 @@
    :juxt.site/transact
    {:juxt.site.sci/program
     #juxt.pprint
-    [[:xtdb.api/put (:doc *prepare*)]]}
+    [[:put :site (:doc *prepare*)]]}
 
    :juxt.site/scope
    #{"https://data.example.org/petstore/scopes/read"

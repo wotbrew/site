@@ -19,7 +19,7 @@
    {:juxt.site.sci/program
     #juxt.pprint
     (for [doc (:docs *prepare*)]
-      [:xtdb.api/delete doc])}
+      [:delete :site doc])}
    
    :juxt.site/rules
    [[(allowed? subject operation resource permission)

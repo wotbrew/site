@@ -28,7 +28,7 @@
                    clojure.edn/read-string
                    juxt.site.malli/validate-input)
               id (:xt/id edn)]
-          [[:xtdb.api/put
+          [[:put :site
             (assoc edn :juxt.site/type "https://meta.juxt.site/types/template")]])))}
 
    :juxt.site/transact

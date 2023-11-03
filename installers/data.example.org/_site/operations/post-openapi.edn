@@ -41,7 +41,7 @@
       (concat
        [
         ;; openapi.json
-        [:xtdb.api/put
+        [:put :site
          {:xt/id (str base-uri "/openapi.json")
           :juxt.site/type "https://meta.juxt.site/types/openapi-document"
           :juxt.http/content-type "application/json"
@@ -61,7 +61,7 @@
                  (update :ring.response/headers assoc "content-length" (str (count (.getBytes content))))))}}]]
 
        (for [[path path-obj] (get openapi "paths")]
-         [:xtdb.api/put
+         [:put :site
           {:xt/id (str base-uri path)
            :openapi.v3/path path
            :juxt.site/methods
@@ -87,7 +87,7 @@
                [method operation] path-obj
                [variant-type _] (get-in operation ["responses" "200" "content"])
                :when (suffix-map variant-type)]
-           [:xtdb.api/put
+           [:put :site
             {:xt/id (str base-uri path (suffix-map variant-type))
              :juxt.http/content-type variant-type
              :juxt.site/variant-of (str base-uri path)

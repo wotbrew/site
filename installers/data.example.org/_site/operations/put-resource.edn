@@ -39,7 +39,7 @@
    {:juxt.site.sci/program
     #juxt.pprint
     (let [{:keys [updated-document]} *prepare*]
-      [[:xtdb.api/put updated-document]])}
+      [[:put :site updated-document]])}
 
    :juxt.site/rules
    [

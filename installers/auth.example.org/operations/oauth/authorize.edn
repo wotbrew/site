@@ -326,7 +326,7 @@
 
                   location (format "%s?%s" redirect-uri query-component)]
               [
-               [:xtdb.api/put code-doc (java.util.Date/from now) code-doc-expiry]
+               [:put :site code-doc (java.util.Date/from now) code-doc-expiry]
                [:ring.response/status 303]
                [:ring.response/headers
                 (cond-> {"location" location
@@ -393,7 +393,7 @@
                   location (format "%s#%s" redirect-uri fragment)
                   ]
 
-              [[:xtdb.api/put access-token-doc issued-at expiry]
+              [[:put :site access-token-doc issued-at expiry]
                [:ring.response/status 303]
                [:ring.response/headers
                 (cond-> {"location" location}

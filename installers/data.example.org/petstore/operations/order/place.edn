@@ -92,7 +92,7 @@
                    :in [petId]})
                 seq)
          (for [doc docs]
-           [:xtdb.api/put doc])
+           [:put :site doc])
          {:ring.response/status 404
           :ring.response/body (format "No pet with ID %s found" (->> docs first :petId))}))}
 

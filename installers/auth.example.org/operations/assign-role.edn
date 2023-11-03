@@ -57,7 +57,7 @@
     ;; TODO: We could/should see if the role has already be assigned,
     ;; and if not, assign it. Don't create multiple role assignment
     ;; documents.
-    [[:xtdb.api/put *prepare*]]}
+    [[:put :site *prepare*]]}
 
    ;; This operation can be performed via its URI
    :juxt.site/methods

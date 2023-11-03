@@ -15,7 +15,7 @@
    {:juxt.site.sci/program
     #juxt.pprint
      (for [doc (:docs *prepare*)]
-       [:xtdb.api/delete doc])}
+       [:delete :site doc])}
 
    :juxt.site/scope
    #{"https://data.example.org/scopes/petstore/write"}

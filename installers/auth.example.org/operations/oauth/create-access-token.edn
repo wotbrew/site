@@ -308,8 +308,8 @@
 
                   origin (:origin *prepare*)]
 
-              [[:xtdb.api/put access-token-doc issued-at access-token-expiry]
-               [:xtdb.api/put refresh-token-doc issued-at refresh-token-expiry]
+              [[:put :site access-token-doc issued-at access-token-expiry]
+               [:put :site refresh-token-doc issued-at refresh-token-expiry]
                [:ring.response/status 200]
                [:ring.response/headers
                 (cond-> {"content-type" "application/json"
@@ -424,11 +424,11 @@
                             "refresh_token" new-refresh-token}
                      scope (assoc "scope" (clojure.string/join " " scope))))
                   origin (:origin *prepare*)]
-              [[:xtdb.api/put access-token-doc issued-at access-token-expiry]
-               [:xtdb.api/put refresh-token-doc issued-at refresh-token-expiry]
+              [[:put :site access-token-doc issued-at access-token-expiry]
+               [:put :site refresh-token-doc issued-at refresh-token-expiry]
                ;; Delete the old refresh-token and access-token
-               [:xtdb.api/delete (:xt/id existing-refresh-token-doc)]
-               [:xtdb.api/delete (:juxt.site/access-token existing-refresh-token-doc)]
+               [:delete :site (:xt/id existing-refresh-token-doc)]
+               [:delete :site (:juxt.site/access-token existing-refresh-token-doc)]
                ;; See https://www.rfc-editor.org/rfc/rfc6749#section-5.1
                [:ring.response/status 200]
                [:ring.response/headers
@@ -568,9 +568,9 @@
                           jsonista.core/write-value-as-string
                           (format "%s\r\n"))]
                 [
-                 [:xtdb.api/put access-token-doc issued-at access-token-expiry]
-                 [:xtdb.api/put refresh-token-doc issued-at refresh-token-expiry]
-                 [:xtdb.api/put subject issued-at refresh-token-expiry]
+                 [:put :site access-token-doc issued-at access-token-expiry]
+                 [:put :site refresh-token-doc issued-at refresh-token-expiry]
+                 [:put :site subject issued-at refresh-token-expiry]
                  [:ring.response/status 200]
                  [:ring.response/headers
                   {"content-type" "application/json"
@@ -680,8 +680,8 @@
                       jsonista.core/write-value-as-string
                       (format "%s\r\n"))]
             [
-             [:xtdb.api/put access-token-doc issued-at access-token-expiry]
-             [:xtdb.api/put subject issued-at access-token-expiry]
+             [:put :site access-token-doc issued-at access-token-expiry]
+             [:put :site subject issued-at access-token-expiry]
              [:ring.response/status 200]
              [:ring.response/headers
               (cond-> {"content-type" "application/json"

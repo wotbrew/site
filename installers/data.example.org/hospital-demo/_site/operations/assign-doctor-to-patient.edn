@@ -47,7 +47,7 @@
    {:juxt.site.sci/program
     #juxt.pprint
     (let [{:keys [id patient-id doctor-id]} *prepare*]
-      [[:xtdb.api/put
+      [[:put :site
         {:xt/id id
          :patient patient-id
          :doctor doctor-id

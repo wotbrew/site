@@ -37,7 +37,7 @@
    :juxt.site/transact
    {:juxt.site.sci/program
     #juxt.pprint
-    [[:xtdb.api/put *prepare*]]}
+    [[:put :site *prepare*]]}
 
    :juxt.site/rules
    [

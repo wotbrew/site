@@ -81,9 +81,9 @@
             cookie-path (or (:juxt.site/cookie-path session-scope) "/")]
 
         (cond-> []
-          subject (conj [:xtdb.api/put subject])
-          session (conj [:xtdb.api/put session])
-          session-token-doc (conj [:xtdb.api/put session-token-doc])
+          subject (conj [:put :site subject])
+          session (conj [:put :site session])
+          session-token-doc (conj [:put :site session-token-doc])
 
           (and session-token-doc cookie-name)
           (conj [:ring.response/headers

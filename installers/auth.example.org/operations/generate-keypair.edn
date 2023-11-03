@@ -48,8 +48,8 @@
    :juxt.site/transact
    {:juxt.site.sci/program
     #juxt.pprint
-    [[:xtdb.api/put (:doc *prepare*)]
-     [:xtdb.api/put (:active-doc *prepare*)]]}
+    [[:put :site (:doc *prepare*)]
+     [:put :site (:active-doc *prepare*)]]}
 
    :juxt.site/rules
    [

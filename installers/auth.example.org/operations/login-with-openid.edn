@@ -149,8 +149,8 @@
       ;; Pretty much all of this can be computed in the prepare phase,
       ;; unless we decide to honor an existing session.
 
-      [[:xtdb.api/put session]
-       [:xtdb.api/put session-token-doc]
+      [[:put :site session]
+       [:put :site session-token-doc]
        [:ring.response/status 303]
        [:ring.response/headers
         {"location" location

@@ -55,7 +55,7 @@
           (case command
             :add-method
             (let [{:keys [method operation]} opts]
-              [:xtdb.api/put
+              [:put :site
                (update doc
                        :juxt.site/methods (fnil assoc {})
                        (keyword (clojure.string/lower-case method))

@@ -26,8 +26,8 @@
           session-id (:session-id *prepare*)]
 
       (cond-> []
-        session-token-id (conj [:xtdb.api/delete session-token-id])
-        session-id (conj [:xtdb.api/delete session-id])
+        session-token-id (conj [:delete :site session-token-id])
+        session-id (conj [:delete :site session-id])
         cookie-name
         (conj [:ring.response/headers
                {"set-cookie"

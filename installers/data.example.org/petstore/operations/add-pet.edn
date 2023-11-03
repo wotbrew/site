@@ -13,7 +13,7 @@
    {:juxt.site.sci/program
     #juxt.pprint
     (for [doc (:docs *prepare*)]
-      [:xtdb.api/put doc])}
+      [:put :site doc])}
 
    :juxt.site/scope
    #{"https://data.example.org/scopes/petstore/write"}
