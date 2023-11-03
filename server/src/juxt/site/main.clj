@@ -29,7 +29,8 @@
   (memoize
    (fn []
      (log/infof "Configuration profile: %s" (name profile))
-     (let [config-file (io/file (System/getProperty "user.home") ".config/site/config.edn")]
+     (let [config-file (or (some-> (System/getProperty "site.config") io/file)
+                           (io/file (System/getProperty "user.home") ".config/site/config.edn"))]
        (when-not (.exists config-file)
          (log/error (str "Configuration file does not exist: " (.getAbsolutePath config-file)))
          (throw (ex-info
