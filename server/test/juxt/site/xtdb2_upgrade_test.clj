@@ -18,14 +18,6 @@
       (< (System/currentTimeMillis) wait-until) (recur wait-until (f))
       :else ret)))
 
-(def config-file
-  (io/file (System/getProperty "user.home") ".config/site2/config.edn"))
-
-(defn copy-config []
-  (.mkdirs (io/file (System/getProperty "user.home") ".config/site2"))
-  ;; should we not we allow the config file to be overwritten?
-  (io/copy (io/file "etc/config/local-development.edn") config-file))
-
 (defonce systems (atom []))
 
 (defn run-system []
@@ -39,7 +31,6 @@
   (reset! systems []))
 
 (defn each-fixture [f]
-  (when-not (.exists config-file) (copy-config))
   (halt-systems)
   (try
     (f)
@@ -53,7 +44,7 @@
           :when (and (not (.isDirectory file))
                      (str/ends-with? (str file) ".clj"))]
     (load (-> (str file)
-              (str/replace #"^src/" "")
+              (str/replace #"^src/juxt/site/" "")
               (str/replace #"\.clj$" "")))))
 
 (deftest main-zero-args-test
