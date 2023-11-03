@@ -50,8 +50,12 @@
 ;; who are generated per request and not saved
 (defn with-tx [db tx] db)
 
+;; used for valid-time site repl function
+;; we can bind vt with a query
 (defn entity-tx [db id])
 
+;; used for repl import-resources call to block until indexed
+;; not sure if matters
 (defn sync [node])
 
 (defn start-node [opts] (xt-node/start-node opts))
