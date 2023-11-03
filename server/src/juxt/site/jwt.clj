@@ -2,8 +2,8 @@
 
 (ns juxt.site.jwt
   (:require
-   [xtdb.api :as xt]
-   [juxt.site.util :as util])
+    [juxt.site.xtdb-polyfill :as xt]
+    [juxt.site.util :as util])
   (:import
    (com.auth0.jwt JWT)
    (com.auth0.jwt.algorithms Algorithm)

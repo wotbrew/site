@@ -31,7 +31,7 @@
    [hiccup2.core :as hiccup]
    hiccup.util
    [juxt.site.sci-api :as api]
-   [xtdb.api :as xt])
+   [juxt.site.xtdb-polyfill :as xt])
   (:import (java.net URI)))
 
 (defn join-keywords

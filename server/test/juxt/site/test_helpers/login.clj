@@ -6,7 +6,7 @@
    [juxt.site.test-helpers.xt :refer [*xt-node*]]
    [juxt.site.test-helpers.handler :refer [*handler*]]
    [ring.util.codec :as codec]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (defn login-with-form!
   "Return a session id (or nil) given a map of fields."

@@ -12,7 +12,7 @@
    [juxt.site.test-helpers.xt :refer [*xt-node* system-xt-fixture]]
    [juxt.site.test-helpers.handler :refer [*handler* handler-fixture]]
    [juxt.site.test-helpers.fixture :refer [with-fixtures]]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (defn bootstrap []
   (install-bundles!

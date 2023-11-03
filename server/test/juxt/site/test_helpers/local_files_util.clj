@@ -8,7 +8,7 @@
    [juxt.site.test-helpers.xt :refer [*xt-node*]]
    [clojure.java.io :as io]
    [juxt.site.operations :as operations]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (defn get-root-dir []
   ;; Just assume where we're calling the tests from for now, but allow

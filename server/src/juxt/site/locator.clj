@@ -4,7 +4,7 @@
   (:require
    [clojure.tools.logging :as log]
    [clojure.string :as str]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 ;; TODO: Definitely a candidate for clojure.core.cache (or memoize). Always be
 ;; careful using memoize, but in case performance is scarcer than memory.

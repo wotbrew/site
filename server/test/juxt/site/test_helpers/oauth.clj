@@ -12,7 +12,7 @@
    [juxt.site.test-helpers.login :as login :refer [with-session-token]]
    [juxt.site.test-helpers.xt :refer [*xt-node*]]
    [ring.util.codec :as codec]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 ;; These are the uri-maps used by the tests
 

@@ -4,7 +4,7 @@
   (:require
    [clojure.pprint :refer [pprint]]
    [juxt.site.main :as main]
-   [xtdb.api :as xt])
+   [juxt.site.xtdb-polyfill :as xt])
   (:import
    (xtdb.api IXtdb)))
 

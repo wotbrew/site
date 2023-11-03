@@ -2,16 +2,15 @@
 
 (ns juxt.site.xt-util
   (:require
-   [xtdb.db :as xt.db]
-   [xtdb.codec :refer [crux->xt]]
-   [clojure.set :as set]))
+    [juxt.site.xtdb-polyfill :as xt]
+    [clojure.set :as set]))
 
 (defn tx-exception-doc
   "Return the internal XTDB error document for an uncommitted
   transaction."
   [xt-node tx-id]
-  (let [document-store (:document-store xt-node)]
-    (with-open [tx-log (xt.db/open-tx-log (:tx-log xt-node) (dec tx-id) {})]
+  (let [document-store (xt/document-store xt-node)]
+    (with-open [tx-log (xt/open-tx-log (:tx-log xt-node) (dec tx-id) {})]
       (let [m
             (->> tx-log
                  iterator-seq
@@ -19,11 +18,11 @@
                  :xtdb.tx.event/tx-events ; pull out events
                  (map #(get % 2)) ; get the document-hash of each event
                  set
-                 (xt.db/fetch-docs document-store)
+                 (xt/fetch-docs document-store)
                  vals
                  (filter :crux.db.fn/exception)
                  first
-                 crux->xt
+                 xt/crux->xt
                  )]
         (-> m (set/rename-keys
                {:crux.db.fn/failed? :juxt.site.xt/failed?
@@ -38,8 +37,8 @@
   transaction. This relies on internal implementation details which
   may in future by surfaced to the XTDB API."
   [xt-node tx-id]
-  (let [document-store (:document-store xt-node)]
-    (with-open [tx-log (xt.db/open-tx-log (:tx-log xt-node) (dec tx-id) {})]
+  (let [document-store (xt/document-store xt-node)]
+    (with-open [tx-log (xt/open-tx-log (:tx-log xt-node) (dec tx-id) {})]
       (let [tx-events
             (->> tx-log
                  iterator-seq
@@ -47,7 +46,7 @@
                  :xtdb.tx.event/tx-events ; pull out events
                  (map #(get % 2)) ; get the document-hash of each event
                  set
-                 (xt.db/fetch-docs document-store)
+                 (xt/fetch-docs document-store)
                  vals
                  (keep :crux.db.fn/tx-events))
             tx-docs
@@ -58,7 +57,7 @@
                             (when (= tx-op :crux.tx/put)
                               doc-hash)) events)))
                  set
-                 (xt.db/fetch-docs document-store))]
+                 (xt/fetch-docs document-store))]
         (mapv
          (fn [tx-ops]
            (some (fn [[tx-op _ val-id]]

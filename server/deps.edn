@@ -9,11 +9,9 @@
   aero/aero {:mvn/version "1.1.3"}
   io.aviso/pretty {:mvn/version "0.1.35"}
 
-  ;; XT
-  com.xtdb/xtdb-core {:mvn/version "1.23.3"}
-  com.xtdb/xtdb-rocksdb {:mvn/version "1.23.3"}
-  com.xtdb/xtdb-lucene {:mvn/version "1.23.3"}
-  com.xtdb/xtdb-http-server {:mvn/version "1.23.3"}
+  ;; XTDB
+  com.xtdb.labs/xtdb-api {:mvn/version "dev-SNAPSHOT"}
+  com.xtdb.labs/xtdb-core {:mvn/version "dev-SNAPSHOT"}
 
   ;; Jetty
   ring/ring-jetty-adapter {:mvn/version "1.9.5"}
@@ -81,7 +79,9 @@
   ;; Used by /_site/users (401 handler), at least
   hiccup/hiccup {:mvn/version "2.0.0-alpha2"}
 
-  clj-commons/clj-yaml {:mvn/version "1.0.26"}}
+  clj-commons/clj-yaml {:mvn/version "1.0.26"}
+
+  pro.juxt.clojars-mirrors.com.taoensso/nippy {:mvn/version "3.1.1-2"}}
 
  :aliases
  {:dev
@@ -90,7 +90,9 @@
    {org.eclipse.jetty/jetty-jmx {:mvn/version "9.4.44.v20210927"}
     djblue/portal {:mvn/version "0.29.1"}
     borkdude/rewrite-edn {:mvn/version "0.4.6"}
-    juxt.site/installer-graph {:local/root "../installer-graph"}}}
+    juxt.site/installer-graph {:local/root "../installer-graph"}}
+   :jvm-opts ["--add-opens=java.base/java.nio=ALL-UNNAMED"
+              "-Dio.netty.tryReflectionSetAccessible=true"]}
 
   :repl
   {:extra-deps

@@ -10,7 +10,7 @@
    [juxt.site.test-helpers.xt :refer [*xt-node* system-xt-fixture]]
    [juxt.site.repl :as repl]
    [juxt.site.util :as util]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (defn bootstrap []
   (install-bundles!

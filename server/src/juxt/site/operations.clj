@@ -19,7 +19,7 @@
    [malli.error :as malli.error]
    [ring.util.codec :as codec]
    [sci.core :as sci]
-   [xtdb.api :as xt]
+   [juxt.site.xtdb-polyfill :as xt]
    [juxt.site.sci-api :as api]
    juxt.site.schema))
 

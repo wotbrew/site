@@ -4,7 +4,7 @@
   (:require
    [clojure.walk :refer [postwalk]]
    [juxt.site.operations :as operations]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (defn- compile-ast*
   [db ctx ast]

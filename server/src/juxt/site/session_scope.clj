@@ -3,7 +3,7 @@
 (ns juxt.site.session-scope
   (:require
    [ring.middleware.cookies :refer [cookies-request]]
-   [xtdb.api :as xt]
+   [juxt.site.xtdb-polyfill :as xt]
    [juxt.site.repl :as repl]
    [clojure.tools.logging :as log]))
 

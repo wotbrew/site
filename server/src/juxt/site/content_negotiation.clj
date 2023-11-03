@@ -4,7 +4,7 @@
   (:require
    [clojure.string :as str]
    [juxt.pick.ring :refer [pick]]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (defn pick-representation [req representations]
   (when representations

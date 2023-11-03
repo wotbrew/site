@@ -9,7 +9,7 @@
    [juxt.site.test-helpers.fixture :refer [with-fixtures]]
    [juxt.site.test-helpers.oauth :refer [with-bearer-token] :as oauth]
    [juxt.site.test-helpers.handler :refer [handler-fixture *handler*]]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (use-fixtures :each system-xt-fixture handler-fixture init-fixture)
 

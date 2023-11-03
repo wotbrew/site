@@ -12,7 +12,7 @@
    [juxt.site.test-helpers.handler :refer [handler-fixture *handler*]]
    [juxt.site.test-helpers.login :as login]
    [juxt.site.test-helpers.client :as client]
-   [xtdb.api :as xt]
+   [juxt.site.xtdb-polyfill :as xt]
    [juxt.site.repl :as repl]
    [clojure.pprint :refer [pprint]]))
 

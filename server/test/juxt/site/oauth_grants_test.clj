@@ -16,7 +16,7 @@
    [juxt.site.test-helpers.xt :refer [*xt-node* system-xt-fixture]]
    [juxt.site.util :as util]
    [ring.util.codec :as codec]
-   [xtdb.api :as xt]
+   [juxt.site.xtdb-polyfill :as xt]
    [clojure.string :as str]))
 
 (defn bootstrap-fixture [f]

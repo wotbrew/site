@@ -10,7 +10,7 @@
    [juxt.site.main :as main]
    [juxt.site.cache :as cache]
    [juxt.site.jwt :as jwt]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (defn system [] main/*system*)
 

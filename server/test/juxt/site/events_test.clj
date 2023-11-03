@@ -12,7 +12,7 @@
    [juxt.site.test-helpers.fixture :refer [with-fixtures]]
    [juxt.site.install.common-install-util :as ciu]
    [juxt.site.test-helpers.install :as install]
-   [xtdb.api :as xt]
+   [juxt.site.xtdb-polyfill :as xt]
    [clojure.edn :as edn]
    [clojure.java.io :as io]))
 

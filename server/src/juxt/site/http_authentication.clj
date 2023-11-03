@@ -7,18 +7,19 @@
    crypto.password.bcrypt
    [juxt.reap.alpha.decoders :as reap]
    juxt.reap.alpha.rfc7235
-   [xtdb.api :as xt]
+   [juxt.site.xtdb-polyfill :as xt]
    [clojure.string :as str]))
 
 (defn lookup-access-token [db token]
-  (first
-   (xt/q db '{:find [(pull sub [*]) (pull at [*])]
-              :keys [subject access-token]
-              :where [[at :juxt.site/token tok]
-                      [at :juxt.site/type "https://meta.juxt.site/types/access-token"]
-                      [at :juxt.site/subject sub]
-                      [sub :juxt.site/type "https://meta.juxt.site/types/subject"]]
-              :in [tok]} token)))
+  (first (xt/q
+           db
+           '{:find [(pull sub [*]) (pull at [*])]
+             :keys [subject access-token]
+             :where [[at :juxt.site/token tok]
+                     [at :juxt.site/type "https://meta.juxt.site/types/access-token"]
+                     [at :juxt.site/subject sub]
+                     [sub :juxt.site/type "https://meta.juxt.site/types/subject"]]
+             :in [tok]} token)))
 
 (defn authenticate-with-bearer-auth [req db token68 protection-spaces]
   (log/tracef "Protection-spaces are %s" (pr-str protection-spaces))
@@ -60,27 +61,28 @@
            #"([^:]*):([^:]*)"
            (String. (.decode (java.util.Base64/getDecoder) token68)))
 
-          query '{:find [(pull e [*])]
-                  :where [(matches? e username password canonical-root-uri authorization-server)]
+          query
+          '{:find [(pull e [*])]
+            :where [(matches? e username password canonical-root-uri authorization-server)]
 
-                  :rules [[(matches? e username password canonical-root-uri authorization-server)
-                           [e :juxt.site/type "https://meta.juxt.site/types/user-identity"]
-                           [e :juxt.site/username username]
-                           [e :juxt.site/password-hash password-hash]
-                           [e :juxt.site/canonical-root-uri canonical-root-uri]
-                           ;; TODO: We could also add an operation realm here
-                           [(crypto.password.bcrypt/check password password-hash)]]
+            :rules [[(matches? e username password canonical-root-uri authorization-server)
+                     [e :juxt.site/type "https://meta.juxt.site/types/user-identity"]
+                     [e :juxt.site/username username]
+                     [e :juxt.site/password-hash password-hash]
+                     [e :juxt.site/canonical-root-uri canonical-root-uri]
+                     ;; TODO: We could also add an operation realm here
+                     [(crypto.password.bcrypt/check password password-hash)]]
 
-                          ;; Basic HTTP Authentication can also used
-                          ;; to authenticate OAuth2 clients
-                          [(matches? e username password canonical-root-uri authorization-server)
-                           [e :juxt.site/type "https://meta.juxt.site/types/application"]
-                           [e :juxt.site/client-id username]
-                           [e :juxt.site/client-secret password]
-                           [e :juxt.site/authorization-server authorization-server]
-                           ]]
+                    ;; Basic HTTP Authentication can also used
+                    ;; to authenticate OAuth2 clients
+                    [(matches? e username password canonical-root-uri authorization-server)
+                     [e :juxt.site/type "https://meta.juxt.site/types/application"]
+                     [e :juxt.site/client-id username]
+                     [e :juxt.site/client-secret password]
+                     [e :juxt.site/authorization-server authorization-server]
+                     ]]
 
-                  :in [username password canonical-root-uri authorization-server]}
+            :in [username password canonical-root-uri authorization-server]}
 
           candidates
           (map first

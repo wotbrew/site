@@ -2,7 +2,7 @@
 
 (ns juxt.site.graphql-query-processor
   (:require
-   [xtdb.api :as xt]
+   [juxt.site.xtdb-polyfill :as xt]
    [juxt.site.graphql-compiler :as gcompiler]
    [juxt.site.operations :as operations]))
 

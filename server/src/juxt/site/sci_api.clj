@@ -1,7 +1,7 @@
 ;; Copyright © 2023, JUXT LTD.
 
 (ns juxt.site.sci-api
-  (:require [xtdb.api :as xt]))
+  (:require [juxt.site.xtdb-polyfill :as xt]))
 
 (defn lookup-applications [db client-id]
   (seq

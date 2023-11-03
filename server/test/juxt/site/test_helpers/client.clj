@@ -7,7 +7,7 @@
    [juxt.site.test-helpers.handler :refer [*handler*]]
    [juxt.site.test-helpers.xt :refer [*xt-node*]]
    [juxt.site.test-helpers.init :refer [CONFIG]]
-   [xtdb.api :as xt]
+   [juxt.site.xtdb-polyfill :as xt]
    [clojure.edn :as edn]
    [jsonista.core :as json]
    [clojure.java.io :as io]))

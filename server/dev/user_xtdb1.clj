@@ -1,6 +1,6 @@
 ;; Copyright © 2021, JUXT LTD.
 
-(ns user
+(ns user-xtdb1
   (:require
    [ring.util.codec :as codec]
    [clojure.java.io :as io]
@@ -18,7 +18,7 @@
    juxt.site.schema
    malli.dev.pretty
    xtdb.query
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (nippy/extend-freeze
  clojure.lang.Atom :juxt.site.nippy/atom [x data-output]

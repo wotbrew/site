@@ -8,7 +8,7 @@
    [clojure.walk :refer [postwalk]]
    [juxt.site.install.common-install-util :as ciu]
    [juxt.site.operations :as operations]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (defn index-by-id [installer-graph]
   (into {} (map (juxt :id identity) installer-graph)))

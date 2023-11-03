@@ -21,7 +21,7 @@
    [juxt.site.test-helpers.oauth :as oauth]
    [juxt.site.test-helpers.xt :refer [*xt-node* system-xt-fixture]]
    [ring.util.codec :as codec]
-   [xtdb.api :as xt]))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (def AUTH_SERVER
   {"https://auth.example.org" "https://auth.hospital.com"})

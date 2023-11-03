@@ -9,7 +9,7 @@
    [juxt.site.test-helpers.fixture :refer [with-fixtures]]
    [juxt.site.test-helpers.oauth :refer [with-bearer-token] :as oauth]
    [juxt.site.test-helpers.handler :refer [handler-fixture]]
-   [xtdb.api :as xt]
+   [juxt.site.xtdb-polyfill :as xt]
    [juxt.site.repl :as repl]
    [clojure.pprint :refer [pprint]]
    [clojure.set :as set]))

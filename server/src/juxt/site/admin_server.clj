@@ -11,7 +11,7 @@
    [juxt.site.operations :as operations]
    [clojure.edn :as edn]
    [jsonista.core :as json]
-   [xtdb.api :as xt]
+   [juxt.site.xtdb-polyfill :as xt]
    [ring.util.codec :refer [form-decode]])
   (:import (java.lang.management ManagementFactory)
            (org.eclipse.jetty.jmx MBeanContainer)))
