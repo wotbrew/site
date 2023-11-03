@@ -51,20 +51,35 @@
   (log/info "Starting system")
 
   (let [system-config (system-config)
-        system (ig/init system-config)]
+        system (ig/init system-config)
+        halted (atom false)
+        halt-if-running
+        (fn []
+          (when-not @halted
+            (try
+              (reset! halted true)
+              (ig/halt! system)
+              (catch Throwable t
+                (log/error t "Exception on exit")))))]
     (log/infof "Configuration: %s" (pr-str system-config))
 
     (log/info "System started and ready...")
     (log/trace "TRACE on")
+
     (Thread/setDefaultUncaughtExceptionHandler
-     (reify Thread$UncaughtExceptionHandler
-       (uncaughtException [_ _ throwable]
-         (throw (ex-info "Default Exception caught:" throwable)))))
+      (reify Thread$UncaughtExceptionHandler
+        (uncaughtException [_ _ throwable]
+          (throw (ex-info "Default Exception caught:" throwable)))))
 
     (.addShutdownHook
-     (Runtime/getRuntime)
-     (Thread.
-      (fn []
-        (ig/halt! system))))
-    (alter-var-root #'*system* (constantly system)))
-  @(promise))
+      (Runtime/getRuntime)
+      (Thread. (fn [] (halt-if-running))))
+
+    (alter-var-root #'*system* (constantly system))
+
+    (try
+      (when-not (Thread/interrupted) @(promise))
+      (catch InterruptedException _
+        (log/info "System exiting")))
+
+    (halt-if-running)))

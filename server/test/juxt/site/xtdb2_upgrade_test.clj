@@ -31,6 +31,7 @@
   (reset! systems []))
 
 (defn each-fixture [f]
+  (System/setProperty "site.config" "etc/config/local-development.edn")
   (halt-systems)
   (try
     (f)
@@ -59,7 +60,7 @@
               (throw t))))
         main-thread (Thread. ^Runnable run-main)]
     (.start main-thread)
-    (is (until-true 2000 #(some? main/*system*)))
+    (is (until-true 10000 #(some? main/*system*)))
     (.interrupt main-thread)
     (.join main-thread 500)
     (is (not (.isAlive main-thread)))))
