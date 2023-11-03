@@ -23,6 +23,7 @@
 (defn run-system []
   (let [system-config (main/system-config)
         system (ig/init system-config)]
+    (swap! systems conj system)
     {:config system-config
      :system system}))
 
@@ -65,9 +66,34 @@
     (.join main-thread 500)
     (is (not (.isAlive main-thread)))))
 
+(defn listener-port [config]
+  (-> config (get [:juxt.site.listener/listener :juxt.site.listener/secondary-listener]) :juxt.site/port))
+
+(defn get-uri [config & parts]
+  (format "http://localhost:%s%s" (listener-port config) (when (seq parts) (str/join "/" (cons "" parts)))))
+
+(defn GET [config path] (http/send (get-uri config path)))
+
 (deftest healthcheck-test
   (let [{:keys [config]} (run-system)
-        {listener-opts [:juxt.site.listener/listener :juxt.site.listener/secondary-listener]} config
-        {listener-port :juxt.site/port} listener-opts
-        res (http/send {:uri (format "http://localhost:%s/_site/healthcheck" listener-port), :method :get})]
+        res (GET config "_site/healthcheck")]
     (is (= 200 (:status res)))))
+
+(deftest no-404-not-found-test
+  (let [{:keys [config]} (run-system)
+        res (GET config "_site/does-not-exist")]
+    (is (= 500 (:status res)))
+    (is (str/includes? (:body res) "Internal Server Error"))))
+
+(deftest hello-world-resource-test
+  (let [{:keys [config, system]} (run-system)
+        xt-node (:juxt.site.db/xt-node system)
+        _ (is xt-node)
+        _ (->> [[:put :site
+                 {:xt/id (get-uri config "hello-world")
+                  :juxt.http/content-type "text/plain"
+                  :juxt.http/content "Hello, world"}]]
+               (xt/submit-tx xt-node))
+        res (GET config "hello-world")]
+    (is (= 200 (:status res)))
+    (is (= "Hello, world" (:body res)))))

@@ -2,14 +2,11 @@
 
 (ns juxt.site.test-helpers.xt
   (:require
-   [clojure.pprint :refer [pprint]]
    [juxt.site.main :as main]
-   [juxt.site.xtdb-polyfill :as xt])
-  (:import
-   (xtdb.api IXtdb)))
+   [juxt.site.xtdb-polyfill :as xt]))
 
 (def ^:dynamic *opts* {})
-(def ^:dynamic ^IXtdb *xt-node*)
+(def ^:dynamic *xt-node*)
 
 (defmacro with-xt [& body]
   `(with-open [node# (xt/start-node *opts*)]

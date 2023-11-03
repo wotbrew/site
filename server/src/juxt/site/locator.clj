@@ -32,6 +32,8 @@
   "Match on a uri-template, as described in RFC 6570. See
   https://www.rfc-editor.org/rfc/rfc6570."
   [db uri]
+  ;; TODO XTDB2
+  #_
   (when-let [{:keys [resource groups]}
              (first
               (xt/q
