@@ -1,19 +1,7 @@
 ;; Copy this to $HOME/.config/site/config.edn
 
 {
- :ig/system
- {:juxt.site.db/xt-node
-  {:xtdb/tx-log
-   {:kv-store {:xtdb/module xtdb.rocksdb/->kv-store
-               :db-dir #join [#env HOME "/.local/share/site/db/txes"]}}
-
-   :xtdb/document-store
-   {:kv-store {:xtdb/module xtdb.rocksdb/->kv-store
-               :db-dir #join [#env HOME "/.local/share/site/db/docs"]}}
-
-   :xtdb/index-store
-   {:kv-store {:xtdb/module xtdb.rocksdb/->kv-store
-               :db-dir #join [#env HOME "/.local/share/site/db/idxs"]}}}
+ :ig/system {:juxt.site.db/xt-node {}
 
   ;; Primary listener
   [:juxt.site.listener/listener :juxt.site.listener/primary-listener]
