@@ -460,7 +460,10 @@
         method :ring.request/method
         :as req}]
     (if resource
-      (let [allowed-methods (operations/allowed-methods req)
+      (let [allowed-methods
+            ;; TODO XTDB2
+            #{:get, :head, :options, :post, :put, :delete}
+            #_(operations/allowed-methods req)
             ;; allowed-methods will be an empty set if
             ;; no :juxt.site/methods on the resource.
             allowed-methods (cond-> allowed-methods
@@ -1045,7 +1048,8 @@
   (fn [{xt-node :juxt.site/xt-node, :as req}]
     (let [req (h req)]
       (when (:juxt.site/request-id req)
-        (xt/submit-tx
+        ;; TODO XTDB2
+        #_(xt/submit-tx
          xt-node
          [[:xtdb.api/put
            (-> req ->storable

@@ -1,4 +1,4 @@
-;  Copyright © 2022, JUXT LTD.
+;  Copyright © 2023, JUXT LTD.
 
 (ns juxt.site.xtdb-polyfill
   (:refer-clojure :exclude [sync])
@@ -7,19 +7,32 @@
   (:import (java.util Iterator)
            (java.io Closeable)))
 
-(defn db [node] {:node node, :basis nil})
+(defn db [node & [xt1-tx]] {:node node, :basis nil})
 
 (defn q [db q & args]
   (xt2/q (:node db) (into [q] args)))
 
-(defn entity [db id]
-  (let [{:keys [node]} db
-        query '{:find [r]
-                :in [id]
-                :where [($ :site [{:xt/id id, :xt/* r}])]}]
-    (:r (first (xt2/q node [query id])))))
+(def entity-query
+  '{:find [r]
+    :in [id]
+    :where [($ :site [{:xt/id id, :xt/* r}])]})
 
-(defn submit-tx [node & args] (apply xt2/submit-tx node args))
+(defn entity [db id]
+  (when (some? id)
+    (let [{:keys [node]} db]
+      (:r (first (xt2/q node [entity-query id]))))))
+
+(defn entity-for-q [q id]
+  (when (some? id)
+    (:r (first (q [entity-query id])))))
+
+(defn submit-tx [node & args]
+  (try
+    (apply xt2/submit-tx node args)
+    (catch Throwable e
+      ()
+      (throw e)
+      )))
 
 (defn document-store [node])
 
@@ -40,8 +53,9 @@
 
 (defn await-tx [node tx])
 
-(defn tx-committed? [node tx])
+(defn tx-committed? [node tx] true)
 
+;; use in do-operation
 (defn indexing-tx [xt-ctx])
 
 (defn db-basis [db] (:basis db))

@@ -2,26 +2,27 @@
 
 (ns juxt.site.operations
   (:require
-   [clojure.pprint :refer [pprint]]
-   [clojure.string :as str]
-   [clojure.tools.logging :as log]
-   [crypto.password.bcrypt :as bcrypt]
-   [java-http-clj.core :as hc]
-   [jsonista.core :as json]
-   [juxt.grab.alpha.parser :as graphql.parser]
-   [juxt.grab.alpha.schema :as graphql.schema]
-   [juxt.site.http-authentication :as http-authn]
-   [juxt.site.jwt :as jwt]
-   [juxt.site.openid-connect :as openid-connect]
-   [juxt.site.util :refer [make-nonce as-b64-str] :as util]
-   [juxt.site.xt-util :as xt-util]
-   [malli.core :as malli]
-   [malli.error :as malli.error]
-   [ring.util.codec :as codec]
-   [sci.core :as sci]
-   [juxt.site.xtdb-polyfill :as xt]
-   [juxt.site.sci-api :as api]
-   juxt.site.schema))
+    [clojure.pprint :refer [pprint]]
+    [clojure.string :as str]
+    [clojure.tools.logging :as log]
+    [clojure.walk :as walk]
+    [crypto.password.bcrypt :as bcrypt]
+    [java-http-clj.core :as hc]
+    [jsonista.core :as json]
+    [juxt.grab.alpha.parser :as graphql.parser]
+    [juxt.grab.alpha.schema :as graphql.schema]
+    [juxt.site.http-authentication :as http-authn]
+    [juxt.site.jwt :as jwt]
+    [juxt.site.openid-connect :as openid-connect]
+    [juxt.site.util :refer [make-nonce as-b64-str] :as util]
+    [juxt.site.xt-util :as xt-util]
+    [malli.core :as malli]
+    [malli.error :as malli.error]
+    [ring.util.codec :as codec]
+    [sci.core :as sci]
+    [juxt.site.xtdb-polyfill :as xt]
+    [juxt.site.sci-api :as api]
+    juxt.site.schema))
 
 (defn operation->rules
   "Determine rules for the given operation id. A rule is bound to the
@@ -291,6 +292,91 @@
                    :juxt.site/permitted-by (mapv :juxt.site/permission permissions)}))
       []))))
 
+(def ^:dynamic *host-operation* nil)
+(def ^:dynamic *host-ctx* nil)
+
+(def sci-ctx (sci/new-dynamic-var '*ctx*))
+(def sci-operation (sci/new-dynamic-var '*operation*))
+(def sci-resource (sci/new-dynamic-var '*resource*))
+(def sci-permissions (sci/new-dynamic-var '*permissions*))
+(def sci-prepare (sci/new-dynamic-var '*prepare*))
+(def sci-subject (sci/new-dynamic-var '*subject*))
+
+(def common-sci-namespaces2
+  {
+   'user
+   {'pprint-str (fn [x] (with-out-str (pprint x)))}
+
+   'com.auth0.jwt.JWT
+   {'decode (fn decode [x] (com.auth0.jwt.JWT/decode x))}
+
+   'crypto.password.bcrypt {'encrypt bcrypt/encrypt}
+
+   'java-http-clj.core
+   {'send hc/send}
+
+   'jsonista.core
+   {'write-value-as-string (fn [x] (json/write-value-as-string x (json/object-mapper {:pretty true})))
+    'write-value-as-bytes (fn [x] (json/write-value-as-bytes x (json/object-mapper {:pretty true})))
+    'read-value json/read-value
+    'read-value-with-keywords (fn [x] (json/read-value x (json/object-mapper {:decode-key-fn true})))}
+
+   'juxt.site
+   {'decode-id-token juxt.site.openid-connect/decode-id-token
+    'verify-authorization-code
+    (fn [{:keys [code-verifier code-challenge code-challenge-method]}]
+      (assert code-verifier)
+      (assert code-challenge)
+      (assert code-challenge-method)
+      (case code-challenge-method
+        "S256" (let [new-code-challenge (util/code-challenge code-verifier)]
+                 {:verified? (= code-challenge new-code-challenge)
+                  :code-challenge code-challenge
+                  :code-verifier code-verifier
+                  :new-code-challenge new-code-challenge})))}
+
+   'juxt.site.malli
+   {'validate (fn validate [schema value] (malli/validate schema value))
+    'explain-input (fn explain [input]
+                     (->
+                       (malli/explain (get-in *host-operation* [:juxt.site.malli/input-schema]) input)
+                       (malli.error/humanize)))
+    'validate-input
+    (fn validate-input [input]
+      (let [schema (get-in *host-operation* [:juxt.site.malli/input-schema])
+            valid? (malli/validate schema input)]
+        (when-not valid?
+          (throw
+            (ex-info
+              "Validation failed"
+              {:error :validation-failed
+               :input input
+               :schema schema
+               :ring.response/status 400})))
+        input))}
+
+   'log
+   {'trace (fn [message] (log/trace message))
+    'debug (fn [message] (log/debug message))
+    'info (fn [message] (log/info message))
+    'warn (fn [message] (log/warn message))
+    'error (fn [message] (log/error message))}
+
+   'grab
+   {'parse graphql.parser/parse
+    'compile-schema graphql.schema/compile-schema*}
+
+   'ring.util.codec
+   {'form-encode codec/form-encode
+    'form-decode codec/form-decode}
+
+   'clojure.walk
+   {'keywordize-keys
+    clojure.walk/keywordize-keys}
+
+   'clojure.pprint
+   {'pprint pprint}})
+
 (defn common-sci-namespaces [operation]
   {
    'user
@@ -374,6 +460,63 @@
   (dissoc ctx :juxt.site/xt-node :juxt.site/db))
 
 (declare bundle->tx-ops)
+
+
+(def prepare-sci-opts2
+  {:namespaces
+   (merge-with
+     merge
+     {'user {'*ctx* sci-ctx #_(sanitize-ctx ctx)
+             'logf (fn [fmt & fmt-args]
+                     (log/infof (apply format fmt fmt-args)))
+             'log (fn [message]
+                    (log/info message))}
+
+      'xt
+      {
+       ;; Unsafe due to violation of strict serializability, hence
+       ;; marked as entity*
+       'entity*
+       (fn [eid]
+         (if-let [db (:juxt.site/db *host-ctx*)]
+           (xt/entity db eid)
+           (throw (ex-info "Cannot call entity* as no database in context" {}))))}
+
+      'juxt.site.util
+      {'make-nonce make-nonce}
+
+      'juxt.site
+      {'generate-key-pair
+       (fn [algo]
+         (.generateKeyPair (java.security.KeyPairGenerator/getInstance algo)))
+       'get-public-key (fn [kp] (.getPublic kp))
+       'get-private-key (fn [kp] (.getPrivate kp))
+       'get-encoded (fn [k] (as-b64-str (.getEncoded k)))
+       'get-modulus (fn [k] (.getModulus k))
+       'get-public-exponent (fn [k] (.getPublicExponent k))
+       'get-key-format (fn [k] (.getFormat k))
+
+       'bundle->tx-ops
+       (fn [bundle]
+         (bundle->tx-ops
+           (:juxt.site/subject-uri *host-ctx*)
+           ;; TODO: Warning, illegal use of db in prepare. Rather, we
+           ;; should pull out the operations and their hashes, creating a
+           ;; mapping for installer-seq->tx-ops to map operation-uri to
+           ;; an operation, and ensure that the same operation used in
+           ;; the prepare is used in the transact (via a hash).
+           (:juxt.site/db *host-ctx*)
+           bundle))}}
+
+     common-sci-namespaces2)
+
+   :classes
+   {'java.util.Date java.util.Date
+    'java.time.Instant java.time.Instant
+    'java.time.Duration java.time.Duration
+    'java.time.temporal.ChronoUnit java.time.temporal.ChronoUnit
+    'java.security.KeyPairGenerator java.security.KeyPairGenerator
+    }})
 
 (defn prepare-sci-opts [operation ctx]
   {:namespaces
@@ -460,6 +603,10 @@
           (merge (ex-data e) (ex-data (.getCause e)))
           e))))))
 
+;; TODO XTDB2 (rules dissoc'd because symbols not supported yet by xtdb2)
+(defn remove-rules-and-fn-for-xtdb2 [x]
+  (walk/postwalk (fn [x] (if (map? x) (dissoc x :juxt.site/rules :xt/fn) x)) x))
+
 (defn prepare-tx-op [{resource :juxt.site/resource
                       operation :juxt.site/operation
                       :as ctx}]
@@ -480,20 +627,22 @@
 
       ;; The normal case where we invoke the do-operation-tx-fn.
       (let [do-operation-tx-fn (:juxt.site/do-operation-tx-fn operation)]
-        (when-not do-operation-tx-fn
+        ;; TODO XTDB2
+        #_(when-not do-operation-tx-fn
           (throw
            (ex-info
             "Failed to determine :juxt.site/do-operation-tx-fn"
             {:operation-uri (:xt/id operation)})))
-        [[:xtdb.api/fn do-operation-tx-fn
-          (cond-> (select-keys ctx [:juxt.site/subject-uri
-                                    :juxt.site/subject
-                                    :juxt.site/operation-index
-                                    :juxt.site/operation-uri
-                                    :juxt.site/scope
-                                    :juxt.site/prepare])
-            prepare (assoc :juxt.site/prepare prepare)
-            resource (assoc :juxt.site/resource-uri (:xt/id resource)))]]))))
+        [[:call :do-operation-in-tx-fn
+          (remove-rules-and-fn-for-xtdb2
+            (cond-> (select-keys ctx [:juxt.site/subject-uri
+                                      :juxt.site/subject
+                                      :juxt.site/operation-index
+                                      :juxt.site/operation-uri
+                                      :juxt.site/scope
+                                      :juxt.site/prepare])
+                    prepare (assoc :juxt.site/prepare prepare)
+                    resource (assoc :juxt.site/resource-uri (:xt/id resource))))]]))))
 
 (defn apply-ops!
   [xt-node tx-ops]
@@ -608,7 +757,7 @@
                   (cond-> acc
                     true (update :dependency-list #(into % (conj dependencies uri)))
                     (:xt/id input) (update :entities-by-id assoc (:xt/id input) input)
-                    (not operation-uri) (update :tx-ops conj [:xtdb.api/put input])
+                    (not operation-uri) (update :tx-ops conj [:put :site input])
 
                     operation-uri (prepare-operation subject-uri init-data (xt/entity db operation-uri))
 
@@ -632,25 +781,215 @@
         {:errors errors})))
 
     ;; Return the tx-ops
-    (into tx-ops
-          ;; Add the bundle
-          [[:xtdb.api/put (update (assoc bundle-map :xt/id uri)
-                                  :installers
-                                  #(mapv :juxt.site/uri %))]
-           [:xtdb.api/put {:xt/id (str uri ".json")
-                           :juxt.http/content-type "application/json"
-                           :juxt.site/variant-of uri
-                           :juxt.site/respond
-                           {:juxt.site.sci/program
-                            (pr-str '(let [content (str (jsonista.core/write-value-as-string *state*) "\r\n")]
-                                       (-> *ctx*
-                                           (assoc :ring.response/body content)
-                                           (update :ring.response/headers assoc "content-length" (str (count (.getBytes content)))))))}
-                           :juxt.site/protection-space-uris #{"https://auth.example.org/protection-spaces/bearer"}
-                           :juxt.site/access-control-allow-origins
-                           [[".*" {:juxt.site/access-control-allow-origin "*"
-                                   :juxt.site/access-control-allow-methods [:get]
-                                   :juxt.site/access-control-allow-headers ["authorization"]}]]}]])))
+    (remove-rules-and-fn-for-xtdb2
+      (into tx-ops
+            ;; Add the bundle
+            [[:put :site (update (assoc bundle-map :xt/id uri) :installers #(mapv :juxt.site/uri %))]
+             [:put :site {:xt/id (str uri ".json")
+                          :juxt.http/content-type "application/json"
+                          :juxt.site/variant-of uri
+                          :juxt.site/respond
+                          {:juxt.site.sci/program
+                           (pr-str '(let [content (str (jsonista.core/write-value-as-string *state*) "\r\n")]
+                                      (-> *ctx*
+                                          (assoc :ring.response/body content)
+                                          (update :ring.response/headers assoc "content-length" (str (count (.getBytes content)))))))}
+                          :juxt.site/protection-space-uris #{"https://auth.example.org/protection-spaces/bearer"}
+                          :juxt.site/access-control-allow-origins
+                          [[".*" {:juxt.site/access-control-allow-origin "*"
+                                  :juxt.site/access-control-allow-methods [:get]
+                                  :juxt.site/access-control-allow-headers ["authorization"]}]]}]]))))
+
+(defn not-implemented [& _] (throw (Exception. "Not implemented")))
+
+(defn transact-sci-opts3 [prepare subject operation resource permissions q]
+  ;; SCI problem
+  ;; - inject context such as *resource* or *operation*
+  ;; - provide helpers for cryptographic checks and so on
+  ;; - provide wrappers such as match-identity for common queries
+  ;;   - with XTDB2 (q) is provided by the SCI context
+  ;;   - if sci fns are the same as clj fns we might be able to pass it as an arg to our eval here?
+  {:namespaces
+   (merge-with
+     merge
+     {'user
+      ;; cannot have bare vars like this
+      ;; as I need to indirect them to provide them on a request by request basis?
+      ;; can def these inside the script by calling a function
+      {'*operation* operation
+       '*resource* resource
+       '*permissions* permissions
+       '*prepare* prepare
+       '*subject* subject}
+
+      ;; Allowed to access the database
+      'xt
+      {'entity (fn [id] (xt/entity-for-q q id))
+       'q (fn [& args] (q (vec args)))}
+
+      'juxt.site
+      {'match-identity
+       not-implemented
+       #_
+       (fn [m]
+         (log/infof "Matching identity: %s" m)
+         (let [q {:find ['id]
+                  :where (into
+                           [['id :juxt.site/type "https://meta.juxt.site/types/user-identity"]
+                            `(~'or
+                               [~'id :juxt.site.jwt.claims/sub ~(:juxt.site.jwt.claims/sub m)]
+                               [~'id :juxt.site.jwt.claims/nickname ~(:juxt.site.jwt.claims/nickname m)])])}]
+           (log/infof "Query used: %s" (pr-str q))
+           (let [result (ffirst (xt/q db q))]
+             (log/infof "Result: %s" result)
+             result)))
+
+       ;; TODO: Rather than password check in the
+       ;; transaction function (requiring the password
+       ;; to be stored in the transaction-log), this
+       ;; should be moved to the prepare step.
+       'match-identity-with-password
+       not-implemented
+       #_
+       (fn [m password password-hash-key]
+         (ffirst
+           (xt/q db {:find ['id]
+                     :where (into
+                              [['id :juxt.site/type "https://meta.juxt.site/types/user-identity"]
+                               ['id password-hash-key 'password-hash]
+                               ['(crypto.password.bcrypt/check password password-hash)]
+                               ]
+                              (for [[k v] m] ['id k v]))
+                     :in ['password]} password)))
+
+       'lookup-applications
+       not-implemented
+       #_
+       (fn [client-id] (api/lookup-applications db client-id))
+
+       'lookup-scope
+       not-implemented
+       #_
+       (fn [scope]
+         (let [results (xt/q
+                         db
+                         '{:find [(pull e [*])]
+                           :where [[e :juxt.site/type "https://meta.juxt.site/types/oauth-scope"]]})]
+
+           (if (= 1 (count results))
+             (ffirst results)
+             (if (seq results)
+               (throw
+                 (ex-info
+                   (format "Multiple documents for scope: %s" scope)
+                   {:scope scope
+                    :documents (map :xt/id results)}))
+               (throw
+                 (ex-info
+                   (format "No such scope: %s" scope)
+                   {:error "invalid_scope"}))))))
+
+       'lookup-authorization-code
+       not-implemented
+       #_
+       (fn [code]
+         (first
+           (map first
+                (xt/q db '{:find [(pull e [*])]
+                           :where [[e :juxt.site/code code]
+                                   [e :juxt.site/type "https://meta.juxt.site/types/authorization-code"]]
+                           :in [code]}
+                      code))))
+
+       'lookup-access-token
+       not-implemented
+       #_
+       (fn [token]
+         (first
+           (map first
+                (xt/q db '{:find [(pull e [*])]
+                           :where [[e :juxt.site/token token]
+                                   [e :juxt.site/type "https://meta.juxt.site/types/access-token"]]
+                           :in [token]}
+                      token))))
+
+       'lookup-refresh-token
+       not-implemented
+       #_(fn [token]
+         (first
+           (map first
+                (xt/q db '{:find [(pull e [*])]
+                           :where [[e :juxt.site/token token]
+                                   [e :juxt.site/type "https://meta.juxt.site/types/refresh-token"]]
+                           :in [token]}
+                      token))))
+
+       ;; TODO: Rename to make it clear this is a JWT
+       ;; access token. Other access tokens might be
+       ;; possible.
+       'make-access-token
+       not-implemented
+       #_
+       (fn [claims keypair-id]
+         (let [keypair (xt/entity db keypair-id)]
+           (when-not keypair
+             (throw (ex-info (format "Keypair not found: %s" keypair-id) {:keypair-id keypair-id})))
+           (try
+             (jwt/new-access-token claims keypair)
+             (catch Exception cause
+               (throw
+                 (ex-info
+                   "Failed to make access token"
+                   {:claims claims
+                    :keypair-id keypair-id}
+                   cause))))))
+
+       'decode-access-token
+       not-implemented
+       #_
+       (fn [access-token]
+         (let [kid (jwt/get-kid access-token)
+               _ (when-not kid
+                   (throw (ex-info "No key id in access-token, should try all possible keypairs" {})))
+               keypair (jwt/lookup-keypair db kid)]
+           (when-not keypair
+             (throw (ex-info "Keypair not found" {:kid kid})))
+           (jwt/verify-jwt access-token keypair)))}
+
+      'grab
+      {'parsed-types
+       not-implemented
+       #_
+       (fn parsed-types [schema-id]
+         (map :juxt.grab/type-definition
+              (map first
+                   (xt/q db '{:find [(pull e [:juxt.grab/type-definition])]
+                              :where [[e :juxt.site/type "https://meta.juxt.site/types/graphql-type"]
+                                      [e :juxt.site/graphql-schema schema-id]]
+                              :in [schema-id]}
+                         schema-id))))}}
+
+     (common-sci-namespaces operation))
+
+   :classes
+   {'java.util.Date java.util.Date
+    'java.time.Instant java.time.Instant
+    'java.time.Duration java.time.Duration
+    'java.time.temporal.ChronoUnit java.time.temporal.ChronoUnit}
+
+   ;; We can't allow random numbers to be computed as they
+   ;; won't be the same on each node. If this is a problem, we
+   ;; can replace with a (non-secure) PRNG seeded from the
+   ;; tx-instant of the tx. Note that secure random numbers
+   ;; should not be generated this way anyway, since then it
+   ;; would then be possible to mount an attack based on
+   ;; knowledge of the current time. Instead, secure random
+   ;; numbers should be generated in the operation's 'prepare'
+   ;; step.
+   :deny `[loop recur rand rand-int]}
+
+
+  )
 
 (defn transact-sci-opts
   [db prepare subject operation resource permissions]
@@ -658,6 +997,9 @@
    (merge-with
     merge
     {'user
+     ;; cannot have bare vars like this
+     ;; as I need to indirect them to provide them on a request by request basis?
+     ;; can def these inside the script by calling a function
      {'*operation* operation
       '*resource* resource
       '*permissions* permissions
@@ -825,11 +1167,32 @@
     prepare :juxt.site/prepare}]
   (let [db (xt/db xt-ctx)
         ;; TODO XTDB2
-        ;; in xtdb2 there is no equivalent call
         ;; used to determine the id of log events, :xtdb.api/tx-id also included in the event doc, the tx itself is merged into the event.
-        ;; - we could drop the event
-        ;; - find another way to give it an id and drop the tx fields
-        ;; - change xtdb2 to add similar functionality
+        ;; xtdb2 sci contains *current-tx* which might help here
+
+
+        ;; also inner sci atop of outer sci?
+        ;; presumably site now needs to submit its transactions as plain fns
+        ;; currently there is an indirection which permits the string program to be evaluated
+        ;; using one fn doc (do-operation-in-tx-fn)
+        ;; we will need a fn doc per transact program
+        ;; - is this something we create on install, when the transacting operations are added?
+        ;; - automatically create on demand?
+
+        ;; check these transacts?
+        ;; - login-with-open-id.edn
+        ;; - login.edn
+        ;; - logout.edn
+        ;; - test-logging.edn
+        ;; - authorize.edn
+        ;; - create-access-token.edn
+        ;; - introspect-token.edn
+        ;; - exchange-code-for-id-token.edn
+        ;; - fetch-jwks.edn
+        ;; - patch-resource.edn
+        ;; - post-new-resource.edn
+        ;; - post-openapi.edn
+
         tx (xt/indexing-tx xt-ctx)
         _ (assert operation-uri)
         operation (xt/entity db operation-uri)
@@ -975,6 +1338,186 @@
              :juxt.site/error (create-error-structure e)}
             e)))))))
 
+(defn do-operation-in-tx-fn2
+  "This function is applied within a transaction function. It should be
+  fast, but at least doesn't have to worry about the database being
+  stale!"
+  [{subject-uri :juxt.site/subject-uri
+    subject :juxt.site/subject
+    operation-index :juxt.site/operation-index
+    operation-uri :juxt.site/operation-uri
+    resource-uri :juxt.site/resource-uri
+    scope :juxt.site/scope
+    prepare :juxt.site/prepare}
+   q
+   tx-key]
+  (let [;; TODO XTDB2
+        ;; #_#_tx (xt/indexing-tx xt-ctx)
+        _ (assert operation-uri)
+        operation (xt/entity-for-q q operation-uri)
+        resource (xt/entity-for-q q resource-uri)
+
+        _ (when-not operation
+            (throw
+              (ex-info
+                (format "Operation '%s' not found in db" operation-uri)
+                {:operation-uri operation-uri})))
+
+        ;; TODO XTDB2
+        #_#_
+        permissions-result
+        (check-permissions
+          {:juxt.site/db db
+           :juxt.site/subject-uri subject-uri
+           :juxt.site/operation-uri operation-uri
+           :juxt.site/resource-uri resource-uri
+           :juxt.site/scope scope})
+
+        ;; TODO XTDB2
+        #_#_
+        permissions (:juxt.site/permissions permissions-result)
+
+        ;; TODO XTDB2
+        #_#_
+        _ (when-not (seq permissions)
+            (throw
+              (ex-info
+                (format "Operation denied, no permission (subject: %s, operation: %s)" subject-uri operation-uri)
+                (assoc
+                  permissions-result
+                  :juxt.site/error
+                  {:juxt.site/ex-data
+                   (if-not subject-uri
+                     {:ring.response/status 401
+                      :ring.response/body "<!DOCTYPE html><h1>Unauthorized</h1>"}
+
+                     {:ring.response/status 403
+                      :ring.response/body "<!DOCTYPE html><h1>Forbidden</h1>"})}))))]
+
+    (try
+      (assert (or (nil? subject-uri) (string? subject-uri)) "Subject to do-operation-in-tx-fn expected to be a string, or null")
+      (assert (or (nil? resource-uri) (string? resource-uri)) "Resource to do-operation-in-tx-fn expected to be a string, or null")
+
+      ;; Check that we /can/ call the operation
+      (let [
+            fx
+            (cond
+              ;; Official: SCI
+              (-> operation :juxt.site/transact :juxt.site.sci/program)
+              (try
+                (sci/eval-string
+                  (-> operation :juxt.site/transact :juxt.site.sci/program)
+                  ;; TODO XTDB2
+                  (transact-sci-opts3 prepare subject operation resource [] q #_permissions))
+
+                (catch clojure.lang.ExceptionInfo e
+                  ;; The sci.impl/callstack contains a volatile which isn't freezable.
+                  ;; Also, we want to unwrap the original cause exception.
+                  ;; Possibly, in future, we should get the callstack
+                  (throw (or (.getCause e) e))))
+
+              ;; There might be other strategies in the future (although the
+              ;; fewer the better really)
+              :else
+              (throw
+                (ex-info
+                  "Submitted operations should have a valid juxt.site/transact entry"
+                  {:operation operation})))
+
+            _ (log/debugf "FX are %s" (with-out-str (pprint fx)))
+
+            ;; Validate
+            _ (doseq [effect fx]
+                (when-not (and (vector? effect)
+                               (keyword? (first effect))
+                               (if (= :xtdb.api/put (first effect))
+                                 (map? (second effect))
+                                 true))
+                  (throw (ex-info (format "Invalid effect: %s" effect) {:juxt.site/operation operation :effect effect}))))
+
+            xtdb-ops (filter (fn [[effect]] (#{:put :call-fn :delete} effect)) fx)
+
+            ;; Decisions we've made which don't update the database but should
+            ;; be record and reflected in the response.
+            other-response-fx
+            (remove
+              (fn [[kw]]
+                (or
+                  (= (namespace kw) "xtdb.api")
+                  (= kw :juxt.site/apply-to-request-context)))
+              fx)
+
+            result-fx
+            (conj
+              xtdb-ops
+              ;; Add an operation log entry for this transaction
+              [:put
+               :site
+               (into
+                 (cond-> {:xt/id (cond-> (str (:juxt.site/events-base-uri operation) (:tx-id tx-key))
+                                         operation-index (str "/" operation-index))
+                          :juxt.site/type "https://meta.juxt.site/types/event"
+                          ;; TODO XTDB2
+                          #_#_
+                          :xtdb.api/tx-id (:xtdb.api/tx-id tx)
+                          :juxt.site/subject-uri subject-uri
+                          :juxt.site/operation-uri operation-uri
+                          :juxt.site/puts
+                          (vec
+                            (keep
+                              (fn [[tx-op _ {id :xt/id}]]
+                                (when (= tx-op :put) id))
+                              xtdb-ops))
+                          :juxt.site/deletes
+                          (vec
+                            (keep
+                              (fn [[tx-op _ {id :xt/id}]]
+                                (when (= tx-op :delete) id))
+                              xtdb-ops))}
+
+                         operation-index (assoc :juxt.site/tx-event-index operation-index)
+
+                         ;; TODO XTDB2
+                         #_#_tx (into tx)
+
+                         ;; It is useful to denormalise and see the explicit
+                         ;; user or application in the event.
+                         true (into (select-keys subject [:juxt.site/user :juxt.site/application]))
+
+                         (seq other-response-fx)
+                         (assoc :juxt.site/response-fx other-response-fx)))])
+
+            x (inc 42)]
+
+        result-fx)
+
+      (catch Throwable e
+        (let [create-error-structure
+              (fn create-error-structure [error]
+                (let [cause (.getCause error)]
+                  (cond-> {:juxt.site/message (.getMessage error)
+                           :juxt.site/ex-data
+                           (-> (ex-data error)
+                               ;; Otherwise we might get 'Unfreezable
+                               ;; type: class clojure.lang.Volatile'
+                               (dissoc :sci.impl/callstack))}
+                          cause (assoc :juxt.site/cause (create-error-structure cause)))))]
+          (throw
+            (ex-info
+              "Error during transaction"
+              {:juxt.site/subject-uri subject-uri
+               :juxt.site/operation-uri operation-uri
+               :juxt.site/error (create-error-structure e)}
+              e)))))))
+
+;; submit on db start (remove do op install step)
+(def do-operation-in-tx-fn-tx-op
+  [:put-fn :do-operation-in-tx-fn '(fn [ctx]
+                                     (juxt.site.operations/do-operation-in-tx-fn2 ctx q *current-tx*))])
+
+(def operation-sci-opts
+  {:namespaces {'juxt.site.operations {'do-operation-in-tx-fn2 do-operation-in-tx-fn2}}})
+
 (defn apply-response-fx [ctx fx]
   (reduce
    (fn [ctx [op & args]]
@@ -999,7 +1542,8 @@
         ;; Modify context with new db
         ctx (assoc ctx :juxt.site/db new-db)
         ;; We pull out an event-doc for each performed operation
-        event-docs (xt-util/tx-event-docs
+        ;; TODO XTDB2
+        event-docs [] #_(xt-util/tx-event-docs
                     xt-node
                     (get-in (xt/db-basis new-db) [:xtdb.api/tx :xtdb.api/tx-id]))
         ;; We take the last of these event docs, but should we check
@@ -1087,6 +1631,9 @@
           permissions
           (when operation-uri
             (:juxt.site/permissions
+              []
+              ;; TODO XTDB2
+              #_
              (check-permissions
               (cond-> {:juxt.site/db db
                        :juxt.site/operation-uri operation-uri}
@@ -1098,7 +1645,8 @@
                 scope (assoc :juxt.site/scope scope)))))]
 
       (cond
-        (seq permissions)
+        ;; TODO XTDB2
+        true #_(seq permissions)
         (h (assoc req
                   :juxt.site/operation-uri operation-uri
                   :juxt.site/operation operation
