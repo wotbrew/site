@@ -62,7 +62,7 @@
    ;; This operation can be performed via its URI
    :juxt.site/methods
    {:post {:juxt.site/operation-uri "{{$id}}"
-           :juxt.site/acceptable {"accept" "application/json,application/edn"}}}
+           :juxt.site/acceptable {:accept "application/json,application/edn"}}}
 
    :juxt.site/protection-space-uris #{"https://auth.example.org/protection-spaces/bearer"}
 

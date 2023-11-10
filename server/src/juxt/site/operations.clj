@@ -603,9 +603,19 @@
           (merge (ex-data e) (ex-data (.getCause e)))
           e))))))
 
-;; TODO XTDB2 (rules dissoc'd because symbols not supported yet by xtdb2)
-(defn remove-rules-and-fn-for-xtdb2 [x]
-  (walk/postwalk (fn [x] (if (map? x) (dissoc x :juxt.site/rules :xt/fn) x)) x))
+;; TODO XTDB2 (rules dissoc'd because symbols and maps not supported yet by xtdb2)
+(defn munge-for-xtdb2 [x]
+  (walk/postwalk (fn [x]
+                   (cond
+                     (map? x)
+                     (if (some string? (keys x))
+                       (update-keys x keyword)
+                       (dissoc x :juxt.site/rules :xt/fn))
+                     ;; no bignums in XTDB2
+                     (instance? clojure.lang.BigInt x) (try (long x) (catch Throwable _ (str x)))
+                     (decimal? x) (double x)
+                     :else x))
+                 x))
 
 (defn prepare-tx-op [{resource :juxt.site/resource
                       operation :juxt.site/operation
@@ -634,7 +644,7 @@
             "Failed to determine :juxt.site/do-operation-tx-fn"
             {:operation-uri (:xt/id operation)})))
         [[:call :do-operation-in-tx-fn
-          (remove-rules-and-fn-for-xtdb2
+          (munge-for-xtdb2
             (cond-> (select-keys ctx [:juxt.site/subject-uri
                                       :juxt.site/subject
                                       :juxt.site/operation-index
@@ -781,7 +791,7 @@
         {:errors errors})))
 
     ;; Return the tx-ops
-    (remove-rules-and-fn-for-xtdb2
+    (munge-for-xtdb2
       (into tx-ops
             ;; Add the bundle
             [[:put :site (update (assoc bundle-map :xt/id uri) :installers #(mapv :juxt.site/uri %))]
@@ -1424,14 +1434,17 @@
                   "Submitted operations should have a valid juxt.site/transact entry"
                   {:operation operation})))
 
+            fx (munge-for-xtdb2 fx)
+
             _ (log/debugf "FX are %s" (with-out-str (pprint fx)))
 
             ;; Validate
             _ (doseq [effect fx]
                 (when-not (and (vector? effect)
                                (keyword? (first effect))
-                               (if (= :xtdb.api/put (first effect))
-                                 (map? (second effect))
+                               (keyword? (second effect))
+                               (if (= :put (first effect))
+                                 (map? (nth effect 2 nil))
                                  true))
                   (throw (ex-info (format "Invalid effect: %s" effect) {:juxt.site/operation operation :effect effect}))))
 

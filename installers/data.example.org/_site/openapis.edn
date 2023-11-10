@@ -32,7 +32,7 @@
           "properties" {"id" {"type" "string"}}}}
         "application/edn"
         {}}}}
-     :juxt.site/acceptable {"accept" "application/json,application/edn"}}}
+     :juxt.site/acceptable {:accept "application/json,application/edn"}}}
 
    :juxt.site/protection-space-uris #{"https://auth.example.org/protection-spaces/bearer"}
 

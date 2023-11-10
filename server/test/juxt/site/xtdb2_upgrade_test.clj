@@ -143,3 +143,13 @@
       (testing "404 handler should work"
         (let [res (GET config "does-not-exist")]
           (is (= 404 (:status res))))))))
+
+(deftest oauth-scope-test
+  (let [{:keys [config, system]} (run-system)
+        xt-node (:juxt.site.db/xt-node system)]
+    (binding [juxt.site.test-helpers.xt/*xt-node* xt-node]
+
+      (install-bundles!
+        ["juxt/site/bootstrap"
+         "juxt/site/oauth-scope"]
+        (uri-map config)))))

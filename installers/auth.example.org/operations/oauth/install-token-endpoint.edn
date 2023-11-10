@@ -28,7 +28,7 @@
           :juxt.site/methods
           {:post
            {:juxt.site/operation-uri "https://auth.example.org/operations/oauth/create-access-token"
-            :juxt.site/acceptable {"accept" "application/x-www-form-urlencoded"}}}))))}
+            :juxt.site/acceptable {:accept "application/x-www-form-urlencoded"}}}))))}
 
    :juxt.site/transact
    {:juxt.site.sci/program

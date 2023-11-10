@@ -2,18 +2,21 @@
 
 (ns juxt.site.application-registration-test
   (:require
-   [clojure.java.io :as io]
-   [clojure.string :as str]
-   [clojure.test :refer [deftest is are use-fixtures testing]]
-   [jsonista.core :as json]
-   [juxt.site.logging :refer [with-logging]]
-   [juxt.site.repl :as repl]
-   [juxt.site.test-helpers.login :as login]
-   [juxt.site.test-helpers.local-files-util :refer [install-bundles!]]
-   [juxt.site.test-helpers.oauth :refer [RESOURCE_SERVER] :as oauth]
-   [juxt.site.test-helpers.xt :refer [system-xt-fixture]]
-   [juxt.site.test-helpers.handler :refer [*handler* handler-fixture]]
-   [juxt.site.test-helpers.fixture :refer [with-fixtures]]))
+    [clojure.java.io :as io]
+    [clojure.string :as str]
+    [clojure.test :refer [deftest is are use-fixtures testing]]
+    [clojure.tools.logging :as log]
+    [integrant.core :as ig]
+    [jsonista.core :as json]
+    [juxt.site.logging :refer [with-logging]]
+    [juxt.site.repl :as repl]
+    [juxt.site.test-helpers.login :as login]
+    [juxt.site.test-helpers.local-files-util :refer [install-bundles!]]
+    [juxt.site.test-helpers.oauth :refer [RESOURCE_SERVER] :as oauth]
+    [juxt.site.test-helpers.xt :refer [system-xt-fixture]]
+    [juxt.site.test-helpers.handler :refer [*handler* handler-fixture]]
+    [juxt.site.test-helpers.fixture :refer [with-fixtures]]
+    [xtdb.api :as xt2]))
 
 (defn bootstrap []
   (install-bundles!
@@ -51,6 +54,46 @@
             (throw (ex-info "Unexpected response status" {:status status :response response})))]
 
     (json/read-value (:ring.response/body response) (json/object-mapper {:decode-key-fn keyword}))))
+
+(defn non-kw-map? [x]
+  (and (map? x)
+       (not (empty? x))
+       (or (not-any? keyword? (keys x))
+           (some non-kw-map? (tree-seq seqable? seq (vals x))))))
+
+(extend-protocol xtdb.types/FromArrowType
+  org.apache.arrow.vector.types.pojo.ArrowType$Map
+  (<-arrow-type [_] :map))
+
+(defn- ->put-writer [op-writer]
+  (let [put-writer (.legWriter op-writer :put (org.apache.arrow.vector.types.pojo.FieldType/notNullable #xt.arrow/type :struct))
+        doc-writer (.structKeyWriter put-writer "document" (org.apache.arrow.vector.types.pojo.FieldType/notNullable #xt.arrow/type :union))
+        valid-from-writer (.structKeyWriter put-writer "xt$valid_from" xtdb.types/nullable-temporal-field-type)
+        valid-to-writer (.structKeyWriter put-writer "xt$valid_to" xtdb.types/nullable-temporal-field-type)
+        table-doc-writers (java.util.HashMap.)]
+    (fn write-put! [op]
+      (.startStruct put-writer)
+      (let [table-doc-writer (.computeIfAbsent table-doc-writers (xtdb.util/kw->normal-form-kw (.tableName op))
+                                               (xtdb.util/->jfn
+                                                 (fn [table]
+                                                   (.legWriter doc-writer table (org.apache.arrow.vector.types.pojo.FieldType/notNullable #xt.arrow/type :struct)))))]
+        (try
+          (xtdb.vector.writer/write-value!
+            (->> (.doc op)
+                 (into {} (map (juxt (comp xtdb.util/kw->normal-form-kw key)
+                                     val))))
+            table-doc-writer)
+          (catch Throwable e
+            (log/error e "WOT")
+            (throw e)
+            )))
+
+      (xtdb.vector.writer/write-value! (.validFrom op) valid-from-writer)
+      (xtdb.vector.writer/write-value! (.validTo op) valid-to-writer)
+
+      (.endStruct put-writer))))
+
+(alter-var-root #'xtdb.tx-producer/->put-writer (constantly ->put-writer))
 
 (deftest application-registration-test
 

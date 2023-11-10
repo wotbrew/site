@@ -190,7 +190,7 @@
         :juxt.site/methods
         {:post
          {:juxt.site/operation-uri "https://example.org/operations/install-graphql-type"
-          :juxt.site/acceptable {"accept" "text/plain"}}}
+          :juxt.site/acceptable {:accept "text/plain"}}}
         :juxt.site/protection-space-uris #{"https://example.org/protection-spaces/bearer"}}})}
 
    #_#_"https://example.org/graphql/schema-compilation"

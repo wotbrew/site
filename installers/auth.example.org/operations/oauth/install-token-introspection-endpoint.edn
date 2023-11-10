@@ -42,7 +42,7 @@
            #_{:juxt.site/operation "https://auth.example.org/operations/oauth/get-introspect-token-form"}
            :post
            {:juxt.site/operation-uri "https://auth.example.org/operations/oauth/introspect-token"
-            :juxt.site/acceptable {"accept" "application/x-www-form-urlencoded"}}}))))}
+            :juxt.site/acceptable {:accept "application/x-www-form-urlencoded"}}}))))}
 
    :juxt.site/transact
    {:juxt.site.sci/program

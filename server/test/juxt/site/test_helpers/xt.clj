@@ -2,14 +2,16 @@
 
 (ns juxt.site.test-helpers.xt
   (:require
-   [juxt.site.main :as main]
-   [juxt.site.xtdb-polyfill :as xt]))
+    [integrant.core :as ig]
+    [juxt.site.main :as main]
+    [juxt.site.db :as db]
+    [juxt.site.xtdb-polyfill :as xt]))
 
 (def ^:dynamic *opts* {})
 (def ^:dynamic *xt-node*)
 
 (defmacro with-xt [& body]
-  `(with-open [node# (xt/start-node *opts*)]
+  `(with-open [node# (ig/init-key ::db/xt-node *opts*)]
      (binding [*xt-node* node#]
        ~@body)))
 
@@ -17,7 +19,7 @@
   (with-xt (f)))
 
 (defmacro with-system-xt [& body]
-  `(with-open [node# (xt/start-node *opts*)]
+  `(with-open [node# (ig/init-key ::db/xt-node *opts*)]
      (binding [*xt-node* node#
                main/*system* {:juxt.site.db/xt-node node#}]
        ~@body)))

@@ -35,7 +35,7 @@
            ;; TODO: Use an 'enum' here
            "client-type" {"type" "string"}
            }}}}}}
-     :juxt.site/acceptable {"accept" "application/edn,application/json"}}}
+     :juxt.site/acceptable {:accept "application/edn,application/json"}}}
 
    :juxt.site/protection-space-uris #{"https://auth.example.org/protection-spaces/bearer"}
 
