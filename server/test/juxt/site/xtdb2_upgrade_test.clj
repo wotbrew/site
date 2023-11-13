@@ -153,3 +153,93 @@
         ["juxt/site/bootstrap"
          "juxt/site/oauth-scope"]
         (uri-map config)))))
+
+(defn non-kw-map? [x]
+  (and (map? x)
+       (not (empty? x))
+       (or (not-any? keyword? (keys x))
+           (some non-kw-map? (tree-seq seqable? seq (vals x))))))
+
+(extend-protocol xtdb.types/FromArrowType
+  org.apache.arrow.vector.types.pojo.ArrowType$Map
+  (<-arrow-type [_] :map))
+
+(defn- ->put-writer [op-writer]
+  (let [put-writer (.legWriter op-writer :put (org.apache.arrow.vector.types.pojo.FieldType/notNullable #xt.arrow/type :struct))
+        doc-writer (.structKeyWriter put-writer "document" (org.apache.arrow.vector.types.pojo.FieldType/notNullable #xt.arrow/type :union))
+        valid-from-writer (.structKeyWriter put-writer "xt$valid_from" xtdb.types/nullable-temporal-field-type)
+        valid-to-writer (.structKeyWriter put-writer "xt$valid_to" xtdb.types/nullable-temporal-field-type)
+        table-doc-writers (java.util.HashMap.)]
+    (fn write-put! [op]
+      (.startStruct put-writer)
+      (let [table-doc-writer (.computeIfAbsent table-doc-writers (xtdb.util/kw->normal-form-kw (.tableName op))
+                                               (xtdb.util/->jfn
+                                                 (fn [table]
+                                                   (.legWriter doc-writer table (org.apache.arrow.vector.types.pojo.FieldType/notNullable #xt.arrow/type :struct)))))]
+        (try
+          (xtdb.vector.writer/write-value!
+            (->> (.doc op)
+                 (into {} (map (juxt (comp xtdb.util/kw->normal-form-kw key)
+                                     val))))
+            table-doc-writer)
+          (catch Throwable e
+            (log/error e "WOT")
+            (throw e)
+            )))
+
+      (xtdb.vector.writer/write-value! (.validFrom op) valid-from-writer)
+      (xtdb.vector.writer/write-value! (.validTo op) valid-to-writer)
+
+      (.endStruct put-writer))))
+
+(defn- ->call-indexer [allocator, ra-src, wm-src, scan-emitter
+                       tx-ops-rdr, {:keys [tx-key] :as tx-opts}, sci-opts]
+  (let [call-leg (.legReader tx-ops-rdr :call)
+        fn-id-rdr (.structKeyReader call-leg "fn-id")
+        args-rdr (.structKeyReader call-leg "args")
+
+        ;; TODO confirm/expand API that we expose to tx-fns
+        sci-ctx (sci.core/init (merge-with
+                                 (fn [a b] (if (and (map? a) (map? b)) (merge a b) b))
+                                 sci-opts
+                                 {:bindings {'q (#'xtdb.indexer/tx-fn-q allocator ra-src wm-src scan-emitter tx-opts)
+                                             'sql-q (partial #'xtdb.indexer/tx-fn-sql allocator ra-src wm-src tx-opts)
+                                             'sleep (fn [^long n] (Thread/sleep n))
+                                             '*current-tx* tx-key}}))]
+
+    (reify xtdb.indexer.OpIndexer
+      (indexOp [_ tx-op-idx]
+        (try
+          (let [fn-id (.getObject fn-id-rdr tx-op-idx)
+                tx-fn (#'xtdb.indexer/find-fn allocator ra-src wm-src (sci.core/fork sci-ctx) tx-opts fn-id)
+                args (.form (.getObject args-rdr tx-op-idx))
+
+                res (try
+                      (let [res (sci.core/binding
+                                  [sci.core/out *out*
+                                   sci.core/in *in*]
+                                  (apply tx-fn args))]
+                        (cond-> res
+                                (seqable? res) doall))
+                      (catch InterruptedException ie (throw ie))
+                      (catch Throwable t
+                        (log/warn t "unhandled error evaluating tx fn")
+                        (throw (xtdb.error/runtime-err :xtdb.call/error-evaluating-tx-fn
+                                                       {:fn-id fn-id, :args args}
+                                                       t))))]
+            (when (false? res)
+              (throw @#'xtdb.indexer/abort-exn))
+
+            ;; if the user returns `nil` or `true`, we just continue with the rest of the transaction
+            (when-not (or (nil? res) (true? res))
+              (xtdb.util/with-close-on-catch [tx-ops-vec (xtdb.tx-producer/open-tx-ops-vec allocator)]
+                (xtdb.tx-producer/write-tx-ops! allocator (xtdb.vector.writer/->writer tx-ops-vec) (mapv xtdb.tx-producer/parse-tx-op res))
+                (.setValueCount tx-ops-vec (count res))
+                tx-ops-vec)))
+
+          (catch Throwable t
+            (reset! @#'xtdb.indexer/!last-tx-fn-error t)
+            (throw t)))))))
+
+(alter-var-root #'xtdb.tx-producer/->put-writer (constantly ->put-writer))
+(alter-var-root #'xtdb.indexer/->call-indexer (constantly ->call-indexer))

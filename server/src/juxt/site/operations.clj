@@ -604,12 +604,80 @@
           e))))))
 
 ;; TODO XTDB2 (rules dissoc'd because symbols and maps not supported yet by xtdb2)
+;; maybe this is just open api definition
+; replacing ["accept"]
+; replacing ["application/json" "application/edn"]
+; replacing ["description" "content"]
+; replacing ["tags" "summary" "requestBody"]
+; replacing ["tags" "summary"]
+; replacing ["tags" "summary"]
+; replacing ["tags" "summary"]
+; replacing ["tags" "summary"]
+; replacing ["text/html"]
+; replacing ["content"]
+; replacing ["401"]
+; replacing ["type"]
+; replacing ["id"]
+; replacing ["type" "properties"]
+; replacing ["schema"]
+; replacing ["application/edn" "application/json"]
+; replacing ["description" "content"]
+; replacing ["tags" "summary" "requestBody"]
+; replacing ["type"]
+; replacing ["name" "in" "required" "schema" "style"]
+; replacing ["tags" "summary"]
+; replacing ["tags" "summary"]
+; replacing ["type"]
+; replacing ["id"]
+; replacing ["type" "properties"]
+; replacing ["schema"]
+; replacing ["application/json" "application/edn"]
+; replacing ["description" "content"]
+; replacing ["tags" "summary" "requestBody"]
+; replacing ["tags" "summary"]
+; replacing ["application/zip"]
+; replacing ["description" "content"]
+; replacing ["tags" "summary" "requestBody"]
+; replacing ["email"]
+; replacing ["url" "name"]
+; replacing ["title" "description" "termsOfService" "contact" "license" "version"]
+; replacing ["url"]
+; replacing ["https://auth.example.test/scopes/system/read" "https://data.example.test/_site/scopes/system/self-identification" "https://auth.example.test/scopes/system/write"]
+; replacing ["authorizationUrl" "scopes" "tokenUrl"]
+; replacing ["https://auth.example.test/scopes/system/read" "https://data.example.test/_site/scopes/system/self-identification" "https://auth.example.test/scopes/system/write"]
+; replacing ["scopes" "tokenUrl"]
+; replacing ["https://auth.example.test/scopes/system/read" "https://data.example.test/_site/scopes/system/self-identification" "https://auth.example.test/scopes/system/write"]
+; replacing ["authorizationUrl" "scopes"]
+; replacing ["https://auth.example.test/scopes/system/read" "https://data.example.test/_site/scopes/system/self-identification" "https://auth.example.test/scopes/system/write"]
+; replacing ["scopes" "tokenUrl"]
+; replacing ["authorizationCode" "clientCredentials" "implicit" "password"]
+; replacing ["type" "flows"]
+; replacing ["oauth"]
+; replacing ["schemas" "requestBodies" "securitySchemes"]
+; replacing ["openapi" "info" "servers" "tags" "components"]
+
+;; what to do about maps
+;; - use lists or vectors
+;; - serde
+
+(defn discover-incompatible-types [x]
+  (letfn [(walk [path x]
+            (cond (map? x) (reduce-kv (fn [_ k v] (when-not (keyword? k) (log/info "incompatible:" (conj path k))) (walk (conj path k) v)) nil x)
+                  (vector? x) (reduce-kv (fn [_ i x] (walk (conj path i) x)) nil x)
+                  (set? x) (run! #(walk path %) x)
+                  (seq? x) (run! #(walk path %) x)))]
+    (walk [] x)))
+
 (defn munge-for-xtdb2 [x]
+  (discover-incompatible-types x)
   (walk/postwalk (fn [x]
                    (cond
                      (map? x)
                      (if (some string? (keys x))
-                       (update-keys x keyword)
+                       (do
+                         ;; there are a lot of map keys
+                         #_(log/info "replacing" (mapv pr-str (keys x)))
+                         (update-keys x keyword))
                        (dissoc x :juxt.site/rules :xt/fn))
                      ;; no bignums in XTDB2
                      (instance? clojure.lang.BigInt x) (try (long x) (catch Throwable _ (str x)))
@@ -1442,9 +1510,9 @@
             _ (doseq [effect fx]
                 (when-not (and (vector? effect)
                                (keyword? (first effect))
-                               (keyword? (second effect))
                                (if (= :put (first effect))
-                                 (map? (nth effect 2 nil))
+                                 (and (keyword? (nth effect 1 nil))
+                                      (map? (nth effect 2 nil)))
                                  true))
                   (throw (ex-info (format "Invalid effect: %s" effect) {:juxt.site/operation operation :effect effect}))))
 
