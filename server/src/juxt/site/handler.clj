@@ -353,7 +353,8 @@
               (#{:post :put :patch} method) receive-representation)
 
         permissions (:juxt.site/permissions req)
-        _ (assert permissions)
+        ;; TODO XTDB2
+        #_#_ _ (assert permissions)
 
         ;; Default response status
         req (assoc req :ring.response/status 200)]

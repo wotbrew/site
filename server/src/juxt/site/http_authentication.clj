@@ -61,34 +61,30 @@
            #"([^:]*):([^:]*)"
            (String. (.decode (java.util.Base64/getDecoder) token68)))
 
-          query
-          '{:find [(pull e [*])]
-            :where [(matches? e username password canonical-root-uri authorization-server)]
+          user-id-candidates-query
+          '{:find [r]
+            :in [username canonical-root-uri]
+            :where [($ :site [{:xt/* r
+                               :juxt.site/type "https://meta.juxt.site/types/user-identity"
+                               :juxt.site/username username
+                               :juxt.site/canonical-root-uri canonical-root-uri}])]}
 
-            :rules [[(matches? e username password canonical-root-uri authorization-server)
-                     [e :juxt.site/type "https://meta.juxt.site/types/user-identity"]
-                     [e :juxt.site/username username]
-                     [e :juxt.site/password-hash password-hash]
-                     [e :juxt.site/canonical-root-uri canonical-root-uri]
-                     ;; TODO: We could also add an operation realm here
-                     [(crypto.password.bcrypt/check password password-hash)]]
+          user-id-candidates
+          (->> (map :r (xt/q db user-id-candidates-query username canonical-root-uri))
+               (filter (fn [{:juxt.site/keys [password-hash]}] (crypto.password.bcrypt/check password password-hash))))
 
-                    ;; Basic HTTP Authentication can also used
-                    ;; to authenticate OAuth2 clients
-                    [(matches? e username password canonical-root-uri authorization-server)
-                     [e :juxt.site/type "https://meta.juxt.site/types/application"]
-                     [e :juxt.site/client-id username]
-                     [e :juxt.site/client-secret password]
-                     [e :juxt.site/authorization-server authorization-server]
-                     ]]
+          app-candidates-query
+          '{:find [r]
+            :in [username password authorization-server]
+            :where [($ :site [{:xt/* r
+                               :juxt.site/type "https://meta.juxt.site/types/application"
+                               :juxt.site/client-id username
+                               :juxt.site/client-secret password
+                               :juxt.site/authorization-server authorization-server}])]}
 
-            :in [username password canonical-root-uri authorization-server]}
+          app-candidates (map :r (xt/q db app-candidates-query username password authorization-server))
 
-          candidates
-          (map first
-               (xt/q db query username password canonical-root-uri authorization-server
-                     ;;canonical-root-uri realm
-                     ))]
+          candidates (concat user-id-candidates app-candidates)]
 
       ;; It's unlikely, but if there are multiple user-identities or
       ;; clients with the same username/password then we will just
