@@ -677,7 +677,7 @@
                        (do
                          ;; there are a lot of map keys
                          #_(log/info "replacing" (mapv pr-str (keys x)))
-                         (update-keys x keyword))
+                         (update-keys x (comp keyword munge name)))
                        (dissoc x :juxt.site/rules :xt/fn))
                      ;; no bignums in XTDB2
                      (instance? clojure.lang.BigInt x) (try (long x) (catch Throwable _ (str x)))
