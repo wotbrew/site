@@ -662,11 +662,20 @@
 
 (defn discover-incompatible-types [x]
   (letfn [(walk [path x]
-            (cond (map? x) (reduce-kv (fn [_ k v] (when-not (keyword? k) (log/info "incompatible:" (conj path k))) (walk (conj path k) v)) nil x)
+            (cond (map? x) (reduce-kv (fn [_ k v]
+                                        (when-not (keyword? k) (log/info "string key:" (conj path k)))
+                                        (when (set? v) (log/info "card-many:" (conj path k)))
+                                        (walk (conj path k) v))
+                                      nil x)
                   (vector? x) (reduce-kv (fn [_ i x] (walk (conj path i) x)) nil x)
                   (set? x) (run! #(walk path %) x)
                   (seq? x) (run! #(walk path %) x)))]
     (walk [] x)))
+
+(defn update-if-present [m k f & args]
+  (if (contains? m k)
+    (apply update m k f args)
+    m))
 
 (defn munge-for-xtdb2 [x]
   (discover-incompatible-types x)
@@ -678,7 +687,8 @@
                          ;; there are a lot of map keys
                          #_(log/info "replacing" (mapv pr-str (keys x)))
                          (update-keys x (comp keyword munge name)))
-                       (dissoc x :juxt.site/rules :xt/fn))
+                       (-> (dissoc x :juxt.site/rules :xt/fn)
+                           (update-if-present :juxt.site/type (fn [t] (if (coll? t) (vec t) [t])))))
                      ;; no bignums in XTDB2
                      (instance? clojure.lang.BigInt x) (try (long x) (catch Throwable _ (str x)))
                      (decimal? x) (double x)
@@ -878,7 +888,7 @@
                                   :juxt.site/access-control-allow-methods [:get]
                                   :juxt.site/access-control-allow-headers ["authorization"]}]]}]]))))
 
-(defn not-implemented [& _] (throw (Exception. "Not implemented")))
+(defn not-implemented [s] (fn [& _] (throw (Exception. (format "Not implemented %s" s)))))
 
 (defn transact-sci-opts3 [prepare subject operation resource permissions q]
   ;; SCI problem
@@ -907,109 +917,111 @@
 
       'juxt.site
       {'match-identity
-       not-implemented
-       #_
-       (fn [m]
+       (fn match-identity [m]
          (log/infof "Matching identity: %s" m)
-         (let [q {:find ['id]
-                  :where (into
-                           [['id :juxt.site/type "https://meta.juxt.site/types/user-identity"]
-                            `(~'or
-                               [~'id :juxt.site.jwt.claims/sub ~(:juxt.site.jwt.claims/sub m)]
-                               [~'id :juxt.site.jwt.claims/nickname ~(:juxt.site.jwt.claims/nickname m)])])}]
-           (log/infof "Query used: %s" (pr-str q))
-           (let [result (ffirst (xt/q db q))]
-             (log/infof "Result: %s" result)
-             result)))
+         (let [qry '(-> (unify (from :site {:bind [{:xt/id id, :juxt.site/type "https://meta.juxt.site/types/user-identity"}]})
+                               (left-join (from :site {:bind [{:xt/id id, :juxt.site.jwt.claims/sub sub}]}) {:bind [id sub]})
+                               (left-join (from :site {:bind [{:xt/id id, :juxt.site.jwt.claims/nickname nickname}]}) {:bind [id nickname]}))
+                        (where (or (= ?nickname nickname) (= ?sub sub))))
+               _ (log/infof "Query used: %s" (pr-str qry))
+               result (:id (first (q [qry {:nickname (:juxt.site.jwt.claims/nickname m), :sub (:juxt.site.jwt.claims/sub m)}])))
+               _ (log/infof "Result: %s" result)]
+           (do (prn))
+           result))
+       #_(fn [m]
+           (log/infof "Matching identity: %s" m)
+           (let [q {:find ['id]
+                    :where (into
+                             [['id :juxt.site/type "https://meta.juxt.site/types/user-identity"]
+                              `(~'or
+                                 [~'id :juxt.site.jwt.claims/sub ~(:juxt.site.jwt.claims/sub m)]
+                                 [~'id :juxt.site.jwt.claims/nickname ~(:juxt.site.jwt.claims/nickname m)])])}]
+             (log/infof "Query used: %s" (pr-str q))
+             (let [result (ffirst (xt/q db q))]
+               (log/infof "Result: %s" result)
+               result)))
 
        ;; TODO: Rather than password check in the
        ;; transaction function (requiring the password
        ;; to be stored in the transaction-log), this
        ;; should be moved to the prepare step.
        'match-identity-with-password
-       not-implemented
-       #_
-       (fn [m password password-hash-key]
-         (ffirst
-           (xt/q db {:find ['id]
-                     :where (into
-                              [['id :juxt.site/type "https://meta.juxt.site/types/user-identity"]
-                               ['id password-hash-key 'password-hash]
-                               ['(crypto.password.bcrypt/check password password-hash)]
-                               ]
-                              (for [[k v] m] ['id k v]))
-                     :in ['password]} password)))
+       (not-implemented 'match-identity-with-password)
+       #_(fn [m password password-hash-key]
+           (ffirst
+             (xt/q db {:find ['id]
+                       :where (into
+                                [['id :juxt.site/type "https://meta.juxt.site/types/user-identity"]
+                                 ['id password-hash-key 'password-hash]
+                                 ['(crypto.password.bcrypt/check password password-hash)]
+                                 ]
+                                (for [[k v] m] ['id k v]))
+                       :in ['password]} password)))
 
        'lookup-applications
-       not-implemented
-       #_
-       (fn [client-id] (api/lookup-applications db client-id))
+       (not-implemented 'lookup-applications)
+       #_(fn [client-id] (api/lookup-applications db client-id))
 
        'lookup-scope
-       not-implemented
-       #_
-       (fn [scope]
-         (let [results (xt/q
-                         db
-                         '{:find [(pull e [*])]
-                           :where [[e :juxt.site/type "https://meta.juxt.site/types/oauth-scope"]]})]
+       (not-implemented 'lookup-scope)
+       #_(fn [scope]
+           (let [results (xt/q
+                           db
+                           '{:find [(pull e [*])]
+                             :where [[e :juxt.site/type "https://meta.juxt.site/types/oauth-scope"]]})]
 
-           (if (= 1 (count results))
-             (ffirst results)
-             (if (seq results)
-               (throw
-                 (ex-info
-                   (format "Multiple documents for scope: %s" scope)
-                   {:scope scope
-                    :documents (map :xt/id results)}))
-               (throw
-                 (ex-info
-                   (format "No such scope: %s" scope)
-                   {:error "invalid_scope"}))))))
+             (if (= 1 (count results))
+               (ffirst results)
+               (if (seq results)
+                 (throw
+                   (ex-info
+                     (format "Multiple documents for scope: %s" scope)
+                     {:scope scope
+                      :documents (map :xt/id results)}))
+                 (throw
+                   (ex-info
+                     (format "No such scope: %s" scope)
+                     {:error "invalid_scope"}))))))
 
        'lookup-authorization-code
-       not-implemented
-       #_
-       (fn [code]
-         (first
-           (map first
-                (xt/q db '{:find [(pull e [*])]
-                           :where [[e :juxt.site/code code]
-                                   [e :juxt.site/type "https://meta.juxt.site/types/authorization-code"]]
-                           :in [code]}
-                      code))))
+       (not-implemented 'lookup-authorization-code)
+       #_(fn [code]
+           (first
+             (map first
+                  (xt/q db '{:find [(pull e [*])]
+                             :where [[e :juxt.site/code code]
+                                     [e :juxt.site/type "https://meta.juxt.site/types/authorization-code"]]
+                             :in [code]}
+                        code))))
 
        'lookup-access-token
-       not-implemented
-       #_
-       (fn [token]
-         (first
-           (map first
-                (xt/q db '{:find [(pull e [*])]
-                           :where [[e :juxt.site/token token]
-                                   [e :juxt.site/type "https://meta.juxt.site/types/access-token"]]
-                           :in [token]}
-                      token))))
+       (not-implemented 'lookup-access-token)
+       #_(fn [token]
+           (first
+             (map first
+                  (xt/q db '{:find [(pull e [*])]
+                             :where [[e :juxt.site/token token]
+                                     [e :juxt.site/type "https://meta.juxt.site/types/access-token"]]
+                             :in [token]}
+                        token))))
 
        'lookup-refresh-token
-       not-implemented
+       (not-implemented 'lookup-refresh-token)
        #_(fn [token]
-         (first
-           (map first
-                (xt/q db '{:find [(pull e [*])]
-                           :where [[e :juxt.site/token token]
-                                   [e :juxt.site/type "https://meta.juxt.site/types/refresh-token"]]
-                           :in [token]}
-                      token))))
+           (first
+             (map first
+                  (xt/q db '{:find [(pull e [*])]
+                             :where [[e :juxt.site/token token]
+                                     [e :juxt.site/type "https://meta.juxt.site/types/refresh-token"]]
+                             :in [token]}
+                        token))))
 
        ;; TODO: Rename to make it clear this is a JWT
        ;; access token. Other access tokens might be
        ;; possible.
        'make-access-token
-       not-implemented
-       #_
-       (fn [claims keypair-id]
-         (let [keypair (xt/entity db keypair-id)]
+       (fn make-access-token [claims keypair-id]
+         (let [keypair (xt/entity-for-q q keypair-id)]
            (when-not keypair
              (throw (ex-info (format "Keypair not found: %s" keypair-id) {:keypair-id keypair-id})))
            (try
@@ -1023,29 +1035,27 @@
                    cause))))))
 
        'decode-access-token
-       not-implemented
-       #_
-       (fn [access-token]
-         (let [kid (jwt/get-kid access-token)
-               _ (when-not kid
-                   (throw (ex-info "No key id in access-token, should try all possible keypairs" {})))
-               keypair (jwt/lookup-keypair db kid)]
-           (when-not keypair
-             (throw (ex-info "Keypair not found" {:kid kid})))
-           (jwt/verify-jwt access-token keypair)))}
+       (not-implemented 'decode-access-token)
+       #_(fn [access-token]
+           (let [kid (jwt/get-kid access-token)
+                 _ (when-not kid
+                     (throw (ex-info "No key id in access-token, should try all possible keypairs" {})))
+                 keypair (jwt/lookup-keypair db kid)]
+             (when-not keypair
+               (throw (ex-info "Keypair not found" {:kid kid})))
+             (jwt/verify-jwt access-token keypair)))}
 
       'grab
       {'parsed-types
-       not-implemented
-       #_
-       (fn parsed-types [schema-id]
-         (map :juxt.grab/type-definition
-              (map first
-                   (xt/q db '{:find [(pull e [:juxt.grab/type-definition])]
-                              :where [[e :juxt.site/type "https://meta.juxt.site/types/graphql-type"]
-                                      [e :juxt.site/graphql-schema schema-id]]
-                              :in [schema-id]}
-                         schema-id))))}}
+       (not-implemented 'parsed-types)
+       #_(fn parsed-types [schema-id]
+           (map :juxt.grab/type-definition
+                (map first
+                     (xt/q db '{:find [(pull e [:juxt.grab/type-definition])]
+                                :where [[e :juxt.site/type "https://meta.juxt.site/types/graphql-type"]
+                                        [e :juxt.site/graphql-schema schema-id]]
+                                :in [schema-id]}
+                           schema-id))))}}
 
      (common-sci-namespaces operation))
 
@@ -1524,7 +1534,7 @@
             (remove
               (fn [[kw]]
                 (or
-                  (= (namespace kw) "xtdb.api")
+                  (#{:put :call-fn :delete} kw)
                   (= kw :juxt.site/apply-to-request-context)))
               fx)
 
@@ -1566,9 +1576,7 @@
                          true (into (select-keys subject [:juxt.site/user :juxt.site/application]))
 
                          (seq other-response-fx)
-                         (assoc :juxt.site/response-fx other-response-fx)))])
-
-            x (inc 42)]
+                         (assoc :juxt.site/response-fx other-response-fx)))])]
 
         result-fx)
 
@@ -1618,7 +1626,7 @@
   the context modified with any fx produced by the operations. The
   context will also contain a modified database under :juxt.site/db."
   [{xt-node :juxt.site/xt-node :as ctx} invocations]
-  (let [tx-ops (mapcat prepare-tx-op invocations)
+  (let [tx-ops (vec (mapcat prepare-tx-op invocations))
         new-db (apply-ops! xt-node tx-ops)
         ;; Modify context with new db
         ctx (assoc ctx :juxt.site/db new-db)
@@ -1727,7 +1735,7 @@
 
       (cond
         ;; TODO XTDB2
-        true #_(seq permissions)
+        operation-uri #_(seq permissions)
         (h (assoc req
                   :juxt.site/operation-uri operation-uri
                   :juxt.site/operation operation

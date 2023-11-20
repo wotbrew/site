@@ -154,6 +154,38 @@
          "juxt/site/oauth-scope"]
         (uri-map config)))))
 
+(deftest example-users-test
+  (let [{:keys [config, system]} (run-system)
+        xt-node (:juxt.site.db/xt-node system)]
+    (binding [juxt.site.test-helpers.xt/*xt-node* xt-node]
+      (install-bundles!
+        ["juxt/site/bootstrap"
+         "juxt/site/oauth-scope"
+         "juxt/site/user-model"
+         "juxt/site/protection-spaces"
+         "juxt/site/oauth-token-endpoint"
+         "juxt/site/password-based-user-identity"
+         "juxt/site/resources-api"
+         "juxt/site/testing/basic-auth-protected-resource"
+         "juxt/site/test-clients"
+         "juxt/site/example-users"]
+        (uri-map config))
+
+      (let [qry '{:find [id]
+                  :where [($ :site [{:xt/id id, :juxt.site/type [t ...]}])
+                          [(= "https://meta.juxt.site/types/user" t)]]}]
+        (is (seq (xt/q (xt/db xt-node) qry))))
+
+      (let [qry '{:find [id]
+                  ;; we insert sets like this
+                  ;; #{"https://meta.juxt.site/types/user-identity", "https://meta.juxt.site/types/basic-user-identity"}
+                  :where [($ :site [{:xt/id id, :juxt.site/type [t ...]}])
+                          ;; if still a set (coercing to vector now in munge)
+                          ;; Error: java.lang.NullPointerException: Cannot invoke "xtdb.vector.IVectorReader.rowCopier(xtdb.vector.IVectorWriter)" because "el_rdr" is null
+                          [(= "https://meta.juxt.site/types/user-identity" t)]]}]
+        (is (seq (xt/q (xt/db xt-node) qry)))))
+    ))
+
 (defn non-kw-map? [x]
   (and (map? x)
        (not (empty? x))

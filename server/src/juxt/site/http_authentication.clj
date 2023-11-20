@@ -65,9 +65,10 @@
           '{:find [r]
             :in [username canonical-root-uri]
             :where [($ :site [{:xt/* r
-                               :juxt.site/type "https://meta.juxt.site/types/user-identity"
+                               :juxt.site/type [t ...]
                                :juxt.site/username username
-                               :juxt.site/canonical-root-uri canonical-root-uri}])]}
+                               :juxt.site/canonical-root-uri canonical-root-uri}])
+                    [(= "https://meta.juxt.site/types/user-identity" t)]]}
 
           user-id-candidates
           (->> (map :r (xt/q db user-id-candidates-query username canonical-root-uri))
@@ -77,14 +78,15 @@
           '{:find [r]
             :in [username password authorization-server]
             :where [($ :site [{:xt/* r
-                               :juxt.site/type "https://meta.juxt.site/types/application"
+                               :juxt.site/type [t ...]
                                :juxt.site/client-id username
                                :juxt.site/client-secret password
-                               :juxt.site/authorization-server authorization-server}])]}
+                               :juxt.site/authorization-server authorization-server}])
+                    [(= "https://meta.juxt.site/types/application" t)]]}
 
           app-candidates (map :r (xt/q db app-candidates-query username password authorization-server))
 
-          candidates (concat user-id-candidates app-candidates)]
+          candidates (vec (concat user-id-candidates app-candidates))]
 
       ;; It's unlikely, but if there are multiple user-identities or
       ;; clients with the same username/password then we will just
@@ -94,7 +96,7 @@
 
       (when-let [candidate (first candidates)]
         (let [candidate-types (:juxt.site/type candidate)
-              candidate-types (if (string? candidate-types) #{candidate-types} candidate-types)]
+              candidate-types (if (string? candidate-types) #{candidate-types} (set candidate-types))]
           (assoc-basic-auth-subject
            req
            (cond-> {}

@@ -25,7 +25,7 @@
       (fn [acc n claim]
         (if (nil? claim)
           (.withNullClaim acc n)
-          (case n
+          (case (if (keyword? n) (-> n name Compiler/demunge) n)
             "aud" (.withAudience acc (into-array String [claim]))
             "exp" (.withExpiresAt acc claim)
             "iat" (.withIssuedAt acc claim)
