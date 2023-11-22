@@ -166,6 +166,8 @@
    :juxt.site/transact
    {:juxt.site.sci/program
     #juxt.pprint
+            (dbg/create-access-token)
+            #_
     (let [{:keys [grant-type jwt-claims new-refresh-token]} *prepare*
           error (fn [m] (throw (ex-info "Error" (assoc m :oauth-error true))))]
 

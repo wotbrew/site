@@ -40,6 +40,22 @@
           (first (map first (xt/q db '{:find [(pull e [*])]
                                        :where [[e :xt/id "https://data.example.test/bundles/juxt/site/bootstrap"]]}))))))))
 
+(deftest create-admin-user-test
+  (local/install-bundles!
+    ["juxt/site/bootstrap"
+     "juxt/site/oauth-scope"
+     "juxt/site/user-model"
+     "juxt/site/protection-spaces"
+     "juxt/site/oauth-token-endpoint"
+     "juxt/site/password-based-user-identity"
+     "juxt/site/resources-api"
+     "juxt/site/testing/basic-auth-protected-resource"
+     "juxt/site/test-clients"
+     "juxt/site/example-users"]
+    (CONFIG "uri-map"))
+
+  (client/create-admin-user))
+
 (deftest get-bundle-test
   (local/install-bundles!
    [["juxt/site/bootstrap" {}]

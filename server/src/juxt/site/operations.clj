@@ -292,91 +292,6 @@
                    :juxt.site/permitted-by (mapv :juxt.site/permission permissions)}))
       []))))
 
-(def ^:dynamic *host-operation* nil)
-(def ^:dynamic *host-ctx* nil)
-
-(def sci-ctx (sci/new-dynamic-var '*ctx*))
-(def sci-operation (sci/new-dynamic-var '*operation*))
-(def sci-resource (sci/new-dynamic-var '*resource*))
-(def sci-permissions (sci/new-dynamic-var '*permissions*))
-(def sci-prepare (sci/new-dynamic-var '*prepare*))
-(def sci-subject (sci/new-dynamic-var '*subject*))
-
-(def common-sci-namespaces2
-  {
-   'user
-   {'pprint-str (fn [x] (with-out-str (pprint x)))}
-
-   'com.auth0.jwt.JWT
-   {'decode (fn decode [x] (com.auth0.jwt.JWT/decode x))}
-
-   'crypto.password.bcrypt {'encrypt bcrypt/encrypt}
-
-   'java-http-clj.core
-   {'send hc/send}
-
-   'jsonista.core
-   {'write-value-as-string (fn [x] (json/write-value-as-string x (json/object-mapper {:pretty true})))
-    'write-value-as-bytes (fn [x] (json/write-value-as-bytes x (json/object-mapper {:pretty true})))
-    'read-value json/read-value
-    'read-value-with-keywords (fn [x] (json/read-value x (json/object-mapper {:decode-key-fn true})))}
-
-   'juxt.site
-   {'decode-id-token juxt.site.openid-connect/decode-id-token
-    'verify-authorization-code
-    (fn [{:keys [code-verifier code-challenge code-challenge-method]}]
-      (assert code-verifier)
-      (assert code-challenge)
-      (assert code-challenge-method)
-      (case code-challenge-method
-        "S256" (let [new-code-challenge (util/code-challenge code-verifier)]
-                 {:verified? (= code-challenge new-code-challenge)
-                  :code-challenge code-challenge
-                  :code-verifier code-verifier
-                  :new-code-challenge new-code-challenge})))}
-
-   'juxt.site.malli
-   {'validate (fn validate [schema value] (malli/validate schema value))
-    'explain-input (fn explain [input]
-                     (->
-                       (malli/explain (get-in *host-operation* [:juxt.site.malli/input-schema]) input)
-                       (malli.error/humanize)))
-    'validate-input
-    (fn validate-input [input]
-      (let [schema (get-in *host-operation* [:juxt.site.malli/input-schema])
-            valid? (malli/validate schema input)]
-        (when-not valid?
-          (throw
-            (ex-info
-              "Validation failed"
-              {:error :validation-failed
-               :input input
-               :schema schema
-               :ring.response/status 400})))
-        input))}
-
-   'log
-   {'trace (fn [message] (log/trace message))
-    'debug (fn [message] (log/debug message))
-    'info (fn [message] (log/info message))
-    'warn (fn [message] (log/warn message))
-    'error (fn [message] (log/error message))}
-
-   'grab
-   {'parse graphql.parser/parse
-    'compile-schema graphql.schema/compile-schema*}
-
-   'ring.util.codec
-   {'form-encode codec/form-encode
-    'form-decode codec/form-decode}
-
-   'clojure.walk
-   {'keywordize-keys
-    clojure.walk/keywordize-keys}
-
-   'clojure.pprint
-   {'pprint pprint}})
-
 (defn common-sci-namespaces [operation]
   {
    'user
@@ -460,63 +375,6 @@
   (dissoc ctx :juxt.site/xt-node :juxt.site/db))
 
 (declare bundle->tx-ops)
-
-
-(def prepare-sci-opts2
-  {:namespaces
-   (merge-with
-     merge
-     {'user {'*ctx* sci-ctx #_(sanitize-ctx ctx)
-             'logf (fn [fmt & fmt-args]
-                     (log/infof (apply format fmt fmt-args)))
-             'log (fn [message]
-                    (log/info message))}
-
-      'xt
-      {
-       ;; Unsafe due to violation of strict serializability, hence
-       ;; marked as entity*
-       'entity*
-       (fn [eid]
-         (if-let [db (:juxt.site/db *host-ctx*)]
-           (xt/entity db eid)
-           (throw (ex-info "Cannot call entity* as no database in context" {}))))}
-
-      'juxt.site.util
-      {'make-nonce make-nonce}
-
-      'juxt.site
-      {'generate-key-pair
-       (fn [algo]
-         (.generateKeyPair (java.security.KeyPairGenerator/getInstance algo)))
-       'get-public-key (fn [kp] (.getPublic kp))
-       'get-private-key (fn [kp] (.getPrivate kp))
-       'get-encoded (fn [k] (as-b64-str (.getEncoded k)))
-       'get-modulus (fn [k] (.getModulus k))
-       'get-public-exponent (fn [k] (.getPublicExponent k))
-       'get-key-format (fn [k] (.getFormat k))
-
-       'bundle->tx-ops
-       (fn [bundle]
-         (bundle->tx-ops
-           (:juxt.site/subject-uri *host-ctx*)
-           ;; TODO: Warning, illegal use of db in prepare. Rather, we
-           ;; should pull out the operations and their hashes, creating a
-           ;; mapping for installer-seq->tx-ops to map operation-uri to
-           ;; an operation, and ensure that the same operation used in
-           ;; the prepare is used in the transact (via a hash).
-           (:juxt.site/db *host-ctx*)
-           bundle))}}
-
-     common-sci-namespaces2)
-
-   :classes
-   {'java.util.Date java.util.Date
-    'java.time.Instant java.time.Instant
-    'java.time.Duration java.time.Duration
-    'java.time.temporal.ChronoUnit java.time.temporal.ChronoUnit
-    'java.security.KeyPairGenerator java.security.KeyPairGenerator
-    }})
 
 (defn prepare-sci-opts [operation ctx]
   {:namespaces
@@ -732,10 +590,10 @@
                     prepare (assoc :juxt.site/prepare prepare)
                     resource (assoc :juxt.site/resource-uri (:xt/id resource))))]]))))
 
-(defn apply-ops!
+(defn apply-ops-returning-tx!
   [xt-node tx-ops]
   (let [tx (xt/submit-tx xt-node tx-ops)
-        {:xtdb.api/keys [tx-id] :as tx} (xt/await-tx xt-node tx)]
+        {:keys [tx-id] :as tx} (xt/await-tx xt-node tx)]
 
     ;; If the transaction has failed to commit, we pull out the
     ;; underlying exception document that XTDB has recorded in
@@ -761,7 +619,11 @@
           (when message
             (ex-info message (or ex-data {})))))))
 
-    (xt/db xt-node tx)))
+    tx))
+
+;; TODO XTDB2 maintain 'returning the db compatibility'
+(defn apply-ops! [xt-node tx-ops]
+  (xt/db xt-node (apply-ops-returning-tx! xt-node tx-ops)))
 
 (defn- prepare-operation
   [{:keys [entities-by-id current-operation-index] :as acc}
@@ -915,19 +777,23 @@
       {'entity (fn [id] (xt/entity-for-q q id))
        'q (fn [& args] (q (vec args)))}
 
+      'dbg
+      {'create-access-token
+       (fn []
+         #=(require wot.access-token)
+         (binding [wot.access-token/*prepare* prepare
+                   wot.access-token/*subject* subject
+                   wot.access-token/*resource* resource
+                   wot.access-token/*operation* operation
+                   wot.access-token/-q q]
+           (let [ret (wot.access-token/transact)]
+             (log/info "transact return" (type ret))
+             ret)))
+       }
+
+
       'juxt.site
-      {'match-identity
-       (fn match-identity [m]
-         (log/infof "Matching identity: %s" m)
-         (let [qry '(-> (unify (from :site {:bind [{:xt/id id, :juxt.site/type "https://meta.juxt.site/types/user-identity"}]})
-                               (left-join (from :site {:bind [{:xt/id id, :juxt.site.jwt.claims/sub sub}]}) {:bind [id sub]})
-                               (left-join (from :site {:bind [{:xt/id id, :juxt.site.jwt.claims/nickname nickname}]}) {:bind [id nickname]}))
-                        (where (or (= ?nickname nickname) (= ?sub sub))))
-               _ (log/infof "Query used: %s" (pr-str qry))
-               result (:id (first (q [qry {:nickname (:juxt.site.jwt.claims/nickname m), :sub (:juxt.site.jwt.claims/sub m)}])))
-               _ (log/infof "Result: %s" result)]
-           (do (prn))
-           result))
+      {'match-identity (partial #'api/match-identity q)
        #_(fn [m]
            (log/infof "Matching identity: %s" m)
            (let [q {:find ['id]
@@ -958,9 +824,7 @@
                                 (for [[k v] m] ['id k v]))
                        :in ['password]} password)))
 
-       'lookup-applications
-       (not-implemented 'lookup-applications)
-       #_(fn [client-id] (api/lookup-applications db client-id))
+       'lookup-applications (partial #'api/lookup-applications q)
 
        'lookup-scope
        (not-implemented 'lookup-scope)
@@ -1005,34 +869,10 @@
                              :in [token]}
                         token))))
 
-       'lookup-refresh-token
-       (not-implemented 'lookup-refresh-token)
-       #_(fn [token]
-           (first
-             (map first
-                  (xt/q db '{:find [(pull e [*])]
-                             :where [[e :juxt.site/token token]
-                                     [e :juxt.site/type "https://meta.juxt.site/types/refresh-token"]]
-                             :in [token]}
-                        token))))
+       'lookup-refresh-token (partial #'api/lookup-refresh-token q)
 
-       ;; TODO: Rename to make it clear this is a JWT
-       ;; access token. Other access tokens might be
-       ;; possible.
        'make-access-token
-       (fn make-access-token [claims keypair-id]
-         (let [keypair (xt/entity-for-q q keypair-id)]
-           (when-not keypair
-             (throw (ex-info (format "Keypair not found: %s" keypair-id) {:keypair-id keypair-id})))
-           (try
-             (jwt/new-access-token claims keypair)
-             (catch Exception cause
-               (throw
-                 (ex-info
-                   "Failed to make access token"
-                   {:claims claims
-                    :keypair-id keypair-id}
-                   cause))))))
+       (partial #'api/make-access-token q)
 
        'decode-access-token
        (not-implemented 'decode-access-token)
@@ -1553,6 +1393,7 @@
                           :xtdb.api/tx-id (:xtdb.api/tx-id tx)
                           :juxt.site/subject-uri subject-uri
                           :juxt.site/operation-uri operation-uri
+                          :juxt.site/tx-id (:tx-id tx-key)
                           :juxt.site/puts
                           (vec
                             (keep
@@ -1627,12 +1468,15 @@
   context will also contain a modified database under :juxt.site/db."
   [{xt-node :juxt.site/xt-node :as ctx} invocations]
   (let [tx-ops (vec (mapcat prepare-tx-op invocations))
-        new-db (apply-ops! xt-node tx-ops)
+        tx (apply-ops-returning-tx! xt-node tx-ops)
+        tx-id (:tx-id tx)
         ;; Modify context with new db
-        ctx (assoc ctx :juxt.site/db new-db)
+        ctx (assoc ctx :juxt.site/db (xt/db xt-node tx))
         ;; We pull out an event-doc for each performed operation
-        ;; TODO XTDB2
-        event-docs [] #_(xt-util/tx-event-docs
+        ;; TODO XTDB2 we need this for create-token and basically anything to work
+        event-docs-qry '{:find [r] :in [tx-id] :where [($ :site [{:xt/* r, :juxt.site/tx-id tx-id}])]}
+        event-docs (map :r (xt/q (xt/db xt-node) event-docs-qry tx-id))
+        #_(xt-util/tx-event-docs
                     xt-node
                     (get-in (xt/db-basis new-db) [:xtdb.api/tx :xtdb.api/tx-id]))
         ;; We take the last of these event docs, but should we check

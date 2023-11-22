@@ -11,6 +11,7 @@
             [juxt.site.operations :as operations]
             [juxt.site.xtdb-polyfill :as xt]
             [xtdb.api :as xt2]
+            [juxt.site.test-helpers.client :refer [create-admin-user]]
             [juxt.site.test-helpers.local-files-util :refer [install-bundles!]]
             [juxt.site.test-helpers.oauth :refer [RESOURCE_SERVER] :as oauth]))
 
@@ -183,8 +184,15 @@
                           ;; if still a set (coercing to vector now in munge)
                           ;; Error: java.lang.NullPointerException: Cannot invoke "xtdb.vector.IVectorReader.rowCopier(xtdb.vector.IVectorWriter)" because "el_rdr" is null
                           [(= "https://meta.juxt.site/types/user-identity" t)]]}]
-        (is (seq (xt/q (xt/db xt-node) qry)))))
-    ))
+        (is (seq (xt/q (xt/db xt-node) qry)))))))
+
+(deftest create-admin-user-test
+  (let [{:keys [config, system]} (run-system)
+        xt-node (:juxt.site.db/xt-node system)]
+    (binding [juxt.site.test-helpers.xt/*xt-node* xt-node]
+
+
+      )))
 
 (defn non-kw-map? [x]
   (and (map? x)

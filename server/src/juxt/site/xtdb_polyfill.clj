@@ -12,6 +12,10 @@
 (defn q [db q & args]
   (xt2/q (:node db) (into [q] args)))
 
+(defn q2-for-db [db]
+  (fn q2 [& args]
+    (apply xt2/q (:node db) args)))
+
 (def entity-query
   '{:find [r]
     :in [id]
@@ -51,7 +55,7 @@
 
 (defn pull-many [db & args])
 
-(defn await-tx [node tx])
+(defn await-tx [node tx] tx)
 
 (defn tx-committed? [node tx] true)
 
